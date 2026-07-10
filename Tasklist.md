@@ -9,6 +9,7 @@
 ### **Woche 1 – Projektsetup & Architektur**
 - Projektkickoff, Rollen & Verantwortlichkeiten klären  
 - Grobarchitektur definieren (Frontend, lokales Analysemodell, LLM‑Routing, Compliance‑Module)  ⚠️ 11.7. definieren und malen :) / Tasks zuweisen ⚠️
+- Task Review Weeks - Prio festlegen 
 - Git‑Repository einrichten (Code, Docs, Issues, Branching‑Strategie) ✅ Task erledigt
 - Online‑Arbeitsumgebung festlegen (Kanban, Kommunikationskanäle, CI/CD‑Pipeline)
   -- WhatsApp - ✅ Task erledigt
@@ -16,6 +17,7 @@
   -- lokale Demoumgebung für jeden - ✅ Task erledigt
   -- Terminabstimmung über Whatsgruppe - ✅ Task erledigt 
   -- CI/CD out of scope - optional Unit Test für Code je nach Projektfortschritt ⚠️
+- Cloud Lösung mit GPU bzw Angebot David f. HP Server m. OLLAMA drauf
 - Hardware für Demo-Laptop auswählen und vorbereiten - macht jeder auf seiner lokalen Umgebung daheim - ✅ Task erledigt
 - SW Umgebung für Projekt lokal aufsetzen
 -   Tools festlegen
