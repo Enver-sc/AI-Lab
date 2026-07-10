@@ -1,5 +1,4 @@
-Hier ist eine **klar strukturierte, realistische 10‑Wochen‑Taskliste** für dein Projekt *Sustainable AI Gateway*, inklusive einer **vollen Woche Puffer für den Dry‑Run**.  
-Sie ist so aufgebaut, dass ihr als verteiltes Team mit gemeinsamem Git‑Repo und einer lokal gehosteten Demoumgebung effizient arbeiten könnt.
+10‑Wochen‑Taskliste** für dein Projekt *Sustainable AI Gateway*, inklusive einer **vollen Woche Puffer für den Dry‑Run**.  
 
 ---
 
