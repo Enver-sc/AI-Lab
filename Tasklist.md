@@ -1,4 +1,4 @@
-10‑Wochen‑Taskliste** für dein Projekt *Sustainable AI Gateway*, inklusive einer **vollen Woche Puffer für den Dry‑Run**.  
+8‑Wochen‑Taskliste**, so dass ihr **spätestens am 10.09.** eine stabile Live‑Demo für Euer Projekt *Sustainable AI Gateway*, inklusive einer **vollen Woche Puffer für den Dry‑Run**.  
 
 ---
 
@@ -26,91 +26,78 @@
 
 ---
 
-### **Woche 2 – Basisinfrastruktur & Entwicklungsumgebung**
-- Lokale Entwicklungsumgebungen einrichten  
-- Grundgerüst für Frontend (Framework, UI‑Skeleton)  
-- Backend‑Skeleton (API‑Gateway, Prompt‑Ingestion, Logging)  
-- Setup für lokales KI‑Analysemodell (z.B. kleiner Transformer, LLM‑Lite)  
-- Definition der Datenmodelle (Prompt‑Metadata, CO₂‑Schätzung, Compliance‑Score etc.)
+Hier ist deine **angepasste 8‑Wochen‑Taskliste**, so dass ihr **spätestens am 10.09.** eine stabile Live‑Demo zeigen könnt.  
+Ich habe die Inhalte verdichtet, Prioritäten neu gesetzt und trotzdem eine **volle Woche für den Dry‑Run** eingeplant.
 
 ---
 
-### **Woche 3 – Lokales Analysemodell (Version 1)**
-- Trainingsdaten sammeln/erstellen (Prompt‑Beispiele, Compliance‑Labels, Komplexitätsklassen)  
-- Erste Modellversion trainieren (Komplexitätsschätzung, Token‑Prognose)  
-- Modul zur CO₂‑Schätzung implementieren (Token‑Kosten × Modell‑Energieprofil)  
-- Modell‑API bereitstellen (lokal auf Laptop lauffähig)
+### **Woche 2 – Basisinfrastruktur & Analysemodell (V1)**
+- Frontend‑Skeleton erstellen  
+- Backend‑API‑Skeleton erstellen  
+- Lokales Analysemodell auswählen & integrieren (z. B. kleiner Transformer)  
+- Token‑Schätzung + CO₂‑Berechnung (Basisformeln)  
+- Erste Trainingsdaten für Prompt‑Analyse sammeln
 
 ---
 
-### **Woche 4 – Compliance‑Modul**
-- Compliance‑Regelwerk definieren (Datenschutz, sensible Inhalte, Urheberrecht, interne Policies)  
-- Klassifikator entwickeln (Regel‑basiert + ML‑basiert)  
-- Ampel‑Indikator implementieren  
-- Logging & Audit‑Trail für Compliance‑Entscheidungen
+### **Woche 3 – Compliance‑Modul & Modellrouting**
+- Compliance‑Regelwerk definieren (Datenschutz, sensible Inhalte, Policies)  
+- Compliance‑Klassifikator implementieren (Regel‑basiert + ML‑Heuristik)  
+- LLM‑Routing‑Logik implementieren (Modellwahl nach Analyse)  
+- Kosten‑Schätzung integrieren (Tokenpreis × Tokenanzahl)  
+- Dauer‑Schätzung integrieren
 
 ---
 
-### **Woche 5 – LLM‑Routing & Kostenschätzung**
-- Modellkatalog definieren (lokale Modelle, Cloud‑LLMs, Kostenprofile)  
-- Routing‑Logik implementieren (Modellwahl basierend auf Analyse)  
-- Kosten‑Schätzung (Token‑Preis × geschätzte Tokenanzahl)  
-- Dauer‑Schätzung (Modellgeschwindigkeit × Tokenanzahl)
-
----
-
-### **Woche 6 – Frontend‑Integration**
-- UI‑Module für:
+### **Woche 4 – Frontend‑Integration**
+- Dashboard‑UI für:
   - CO₂‑Fußabdruck  
   - Kosten & Dauer  
   - Compliance‑Score  
   - Modellvorschlag  
   - Optimierungsvorschläge  
-- Prompt‑Eingabe + Ergebnis‑Dashboard  
-- API‑Integration Frontend ↔ Backend ↔ Analysemodell
+- API‑Integration Frontend ↔ Backend ↔ Analysemodell  
+- Erste End‑to‑End‑Tests
 
 ---
 
-### **Woche 7 – Optimierungsvorschlags‑Engine**
+### **Woche 5 – Optimierungsvorschlags‑Engine**
 - Regeln & ML‑Heuristiken für:
   - Token‑Reduktion  
   - Modellwahl‑Optimierung  
   - Compliance‑Verbesserung  
-- Ausgabeformat definieren (konkret, kurz, actionable)  
-- Integration ins Dashboard
+- Ausgabeformat definieren (kurz, klar, actionable)  
+- Integration ins Dashboard  
+- Logging & Feedback‑Loop für Selbstoptimierung
 
 ---
 
-### **Woche 8 – Stabilisierung & Performance**
+### **Woche 6 – Stabilisierung & Performance**
 - End‑to‑End‑Tests  
-- Lasttests auf Demo‑Laptop  
-- Optimierung des lokalen Analysemodells (Selbstoptimierung: Feedback‑Loop)  
+- Performance‑Optimierung auf Demo‑Laptop  
 - Fehlerbehandlung, Logging, Telemetrie  
-- Dokumentation erweitern (Architektur, API, Setup)
+- Dokumentation im Git‑Repo erweitern (Setup, Architektur, API)
 
 ---
 
-### **Woche 9 – Demo‑Build & Feinschliff**
+### **Woche 7 – Demo‑Build & Feinschliff**
 - Demo‑Version auf Demo‑Laptop deployen  
 - UI‑Polishing  
-- Demo‑Skripte erstellen (Storyline, Beispielprompts, Szenarien)  
-- Troubleshooting & Bugfixing  
-- Finalisierung der Projektdokumentation im Git‑Repo
+- Demo‑Storyline erstellen (Beispielprompts, Szenarien)  
+- Backup‑Strategie & Fallback‑Modelle vorbereiten  
+- Finalisierung der Projektdokumentation
 
 ---
 
-### **Woche 10 – Dry‑Run‑Woche (Puffer)**
+### **Woche 8 – Dry‑Run‑Woche (Puffer)**
 - Vollständiger Probelauf der Live‑Demo  
-- Backup‑Strategie für Demo‑Laptop  
-- Notfallplan erstellen (Fallback‑Modelle, Offline‑Modus)  
-- Letzte Optimierungen  
-- Team‑Abnahme
+- Troubleshooting & letzte Optimierungen  
+- Team‑Abnahme  
+- Finaler Check der Demo‑Umgebung
 
 ---
 
-## 🎯 **Ergebnis nach 10 Wochen**
-Ein voll funktionsfähiges Dashboard, das Prompts lokal analysiert und CO₂‑Fußabdruck, Kosten, Dauer, Compliance und Optimierungsvorschläge liefert – bereit für eine überzeugende Live‑Demo.
+## 🎯 Ergebnis
+Ihr habt am 10.09. eine **stabile, lokal lauffähige Demo**, die CO₂‑Fußabdruck, Kosten, Dauer, Compliance und Optimierungsvorschläge für Prompts liefert.
 
----
-
-Wenn du möchtest, kann ich dir als nächsten Schritt eine **Gantt‑Chart‑Struktur**, eine **Rollenverteilung**, oder eine **Risikoanalyse** erstellen.
+Wenn du willst, kann ich dir die Taskliste auch als **GitHub‑README‑Taskliste mit Checkboxen** formatieren.
