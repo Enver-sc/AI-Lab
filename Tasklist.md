@@ -8,15 +8,21 @@
 
 ### **Woche 1 – Projektsetup & Architektur**
 - Projektkickoff, Rollen & Verantwortlichkeiten klären  
-- Grobarchitektur definieren (Frontend, lokales Analysemodell, LLM‑Routing, Compliance‑Module)  
+- Grobarchitektur definieren (Frontend, lokales Analysemodell, LLM‑Routing, Compliance‑Module)  ⚠️ 11.7. definieren und malen :) / Tasks zuweisen ⚠️
 - Git‑Repository einrichten (Code, Docs, Issues, Branching‑Strategie) ✅ Task erledigt
 - Online‑Arbeitsumgebung festlegen (Kanban, Kommunikationskanäle, CI/CD‑Pipeline)
   -- WhatsApp - ✅ Task erledigt
   -- GitHub - ✅ Task erledigt
   -- lokale Demoumgebung für jeden - ✅ Task erledigt
   -- Terminabstimmung über Whatsgruppe - ✅ Task erledigt 
-  -- CI/CD out of scope - optional Unit Test für Code je nach Projektfortschritt (!)
-- Hardware für Demo-Laptop auswählen und vorbereiten  
+  -- CI/CD out of scope - optional Unit Test für Code je nach Projektfortschritt ⚠️
+- Hardware für Demo-Laptop auswählen und vorbereiten - macht jeder auf seiner lokalen Umgebung daheim - ✅ Task erledigt
+- SW Umgebung für Projekt lokal aufsetzen
+-   Tools festlegen
+-     Visual Studio Code
+-     GitHub Desktop / Git Bash
+-   lokales LLM für OLLAMA auswählen - wird gemacht nach Modellwahl siehe Woche 2
+-   Docker Umgebung optional bauen mit Projekt nach Fortschritt ⚠️
 
 ---
 
