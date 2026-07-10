@@ -9,8 +9,13 @@
 ### **Woche 1 – Projektsetup & Architektur**
 - Projektkickoff, Rollen & Verantwortlichkeiten klären  
 - Grobarchitektur definieren (Frontend, lokales Analysemodell, LLM‑Routing, Compliance‑Module)  
-- Git‑Repository einrichten (Code, Docs, Issues, Branching‑Strategie)  
-- Online‑Arbeitsumgebung festlegen (Kanban, Kommunikationskanäle, CI/CD‑Pipeline)  
+- Git‑Repository einrichten (Code, Docs, Issues, Branching‑Strategie) ✅ Task erledigt
+- Online‑Arbeitsumgebung festlegen (Kanban, Kommunikationskanäle, CI/CD‑Pipeline)
+  -- WhatsApp - ✅ Task erledigt
+  -- GitHub - ✅ Task erledigt
+  -- lokale Demoumgebung für jeden - ✅ Task erledigt
+  -- Terminabstimmung über Whatsgruppe - ✅ Task erledigt 
+  -- CI/CD out of scope - optional Unit Test für Code je nach Projektfortschritt (!)
 - Hardware für Demo-Laptop auswählen und vorbereiten  
 
 ---
