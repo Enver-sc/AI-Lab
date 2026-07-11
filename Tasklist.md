@@ -1,3 +1,17 @@
+TaskListe:
+- Berechnungsgrundlagen Recherchen
+--   CO2
+--   Token - Kosten
+---   LLM Auswahl
+--   Compliance Stufe 1/2
+--   Routing Engine
+
+- Implementierung Berechnungsgrundlagen
+-   Bsp. Steering files?
+-   alternativen
+
+---
+
 8‑Wochen‑Taskliste**, so dass ihr **spätestens am 10.09.** eine stabile Live‑Demo für Euer Projekt *Sustainable AI Gateway*, inklusive einer **vollen Woche Puffer für den Dry‑Run**.  
 
 ---
