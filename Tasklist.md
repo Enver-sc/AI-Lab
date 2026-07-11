@@ -5,6 +5,9 @@ Berechnungsgrundlagen – Recherchen
 - Compliance Stufe 1/2 (macht Keng)
 - Routing Engine (macht Mario, aber wahrschl. Überlappung zu LLM Auswahl)
 
+Allgemeiner Task für alle
+- App analyiseren und Verbesserungsvorschläge
+
 Implementierung Berechnungsgrundlagen
 - Beispiel: Steering Files
 - Alternativen (macht Mario in Vorbereitung zur Implementierung)
