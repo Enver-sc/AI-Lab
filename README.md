@@ -1,53 +1,76 @@
-# AI-Lab
-Du hast da schon einen ziemlich starken Projektrahmen skizziert—lass uns das einmal klar und greifbar machen.
+# Sustainable AI Gateway
 
-### Projektkurzbeschreibung
+Eine ausführliche Erklärung mit Architektur-, Ablauf-, Compliance-, Datenbank- und Sicherheitsdiagrammen befindet sich in der [technischen Dokumentation](docs/TECHNISCHE_DOKUMENTATION.md).
 
-**Titel:**  
-Sustainable AI Gateway – Intelligentes Dashboard zur nachhaltigen und regelkonformen Nutzung von Large Language Models
+Lokales Flask-MVP zur Vorabanalyse von Prompts. Ollama liefert möglichst eine strukturierte lokale Analyse; lokale Regeln ergänzen Compliance-Funde, Token-, Kosten-, Energie-, CO₂- und Dauer-Schätzungen sowie eine nachvollziehbare Modellempfehlung.
 
-**Kurzbeschreibung:**  
-Ein Web-Frontend, das eingehende Prompts zunächst von einem lokalen, selbstoptimierenden KI-Modell analysieren lässt. Auf Basis dieser Vorabanalyse werden Nachhaltigkeits‑, Kosten‑ und Compliance-Aspekte bewertet und Optimierungsvorschläge gegeben, bevor der Prompt an ein externes LLM gesendet wird.
+## Architektur
 
----
+- `app/routes`: HTML- und JSON-API-Blueprints
+- `app/services`: Analyse, Compliance, Schätzungen, Verschlüsselung und SSRF-Schutz
+- `app/providers`: Ollama und OpenAI-kompatible APIs hinter einer gemeinsamen Abstraktion
+- `app/templates`, `app/static`: Jinja, Vanilla JavaScript und responsives CSS
+- `app/models.py`: Provider und optionale, promptfreie Nutzungslogs
+- `tests`: Unit- und Routentests mit gemockten externen Aufrufen
 
-### Kernfunktionalitäten des Frontends
+Analyse und Versand sind technisch getrennt. `/api/analyze` ruft keinen externen Provider auf. Versand verlangt eine bewusste Bestätigung im UI und wird bei roter Compliance ohne Begründung serverseitig blockiert.
 
-- **CO₂-Fußabdruck-Bewertung:**  
-  Schätzung des voraussichtlichen Energieverbrauchs und CO₂-Ausstoßes für die Verarbeitung des Prompts (abhängig von Modellwahl, Kontextlänge, Rechenressourcen).
+## Installation
 
-- **LLM-Empfehlung inkl. Kostenschätzung:**  
-  Auswahl eines passenden LLM (z.B. lokal vs. Cloud, kleineres vs. größeres Modell) mit transparenter Anzeige der geschätzten Anfragekosten.
+Voraussetzungen: Python 3.12 und optional Ollama.
 
-- **Optionale Verarbeitungsdauer-Schätzung:**  
-  Prognose der Antwortzeit basierend auf Modell, Last und Prompt-Komplexität.
+```bash
+python -m venv .venv
+```
 
-- **Compliance-Indikator:**  
-  Bewertung, ob der Prompt potenziell gegen interne Richtlinien, rechtliche Vorgaben (z.B. Datenschutz, Urheberrecht) oder ethische Standards verstößt; Anzeige als Ampel oder Score.
+Linux/macOS: `source .venv/bin/activate`  
+Windows: `.venv\Scripts\activate`
 
-- **Optimierungsvorschläge:**  
-  Konkrete Hinweise zur Anpassung des Prompts, um:
-  - **CO₂-Fußabdruck** zu reduzieren (z.B. kürzere Kontexte, geeignetes Modell),
-  - **Kosten** zu senken (z.B. günstigere Modellklasse, weniger Tokens),
-  - **Compliance** zu verbessern (z.B. Entfernen sensibler Daten, Umformulierung).
+```bash
+pip install -r requirements.txt
+copy .env.example .env
+```
 
----
+Unter Linux/macOS: `cp .env.example .env`.
 
-### Technische Zielsetzung (kurz)
+Fernet-Key erzeugen und als `APP_ENCRYPTION_KEY` ausschließlich in `.env` eintragen:
 
-- **Lokales Analysemodell:**  
-  Ein schlankes, selbstoptimierendes KI-Modell (z.B. durch kontinuierliches Feedback/Logging), das:
-  - Prompts klassifiziert (Komplexität, Sensitivität, Länge),
-  - passende LLMs vorschlägt,
-  - Schätzungen für CO₂, Kosten und Dauer liefert.
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
 
-- **Dashboard / UI:**  
-  Intuitive Oberfläche mit:
-  - Eingabefeld für Prompt,
-  - Ergebnis-Panel (CO₂, Kosten, Dauer, Compliance),
-  - Bereich für Optimierungsvorschläge,
-  - Option, den optimierten Prompt direkt an das empfohlene LLM zu senden.
+Ohne Key startet die Anwendung, speichert aber keine API-Schlüssel. Auch `SECRET_KEY` muss ersetzt werden.
 
----
+## Ollama
 
-Wenn du magst, können wir als nächsten Schritt eine strukturierte Projektbeschreibung (z.B. für Förderantrag, Pitch-Deck oder Pflichtenheft) ausformulieren – eher technisch, eher business-orientiert oder beides?
+```bash
+ollama pull gemma4
+ollama serve
+```
+
+`OLLAMA_MODEL`, `OLLAMA_BASE_URL` und `OLLAMA_TIMEOUT_SECONDS` steuern die Integration. `OLLAMA_ANALYSIS_TIMEOUT_SECONDS=0` lässt die lokale Dashboard-Analyse ohne Zeitlimit laufen; ein positiver Wert setzt stattdessen ein Limit in Sekunden. Ohne Ollama startet das Gateway weiterhin. `/api/ollama/status` meldet Status und Modelle.
+
+## Start, Datenbank und Tests
+
+SQLite und Tabellen werden beim ersten Start automatisch im `instance`-Verzeichnis angelegt.
+
+```bash
+flask --app app run --debug
+pytest
+```
+
+Dashboard: <http://127.0.0.1:5000>, Provider: `/settings/providers`.
+
+## Provider und Sicherheit
+
+Unterstützt werden Ollama und generische OpenAI-kompatible APIs (`/models`, `/chat/completions`). Private, Loopback-, Link-local- und reservierte externe Ziele werden nach DNS-Auflösung blockiert; Redirects sind deaktiviert. Localhost ist nur für `ollama` erlaubt. Schlüssel liegen Fernet-verschlüsselt in SQLite und erscheinen in API/HTML nur maskiert. EU-Hosting ist vom Betreiber vertraglich zu verifizieren.
+
+Prompts werden standardmäßig nicht gespeichert. `ENABLE_PROMPT_LOGGING=true` speichert nur SHA-256-Hash, Token-/Modell-/Schätzmetadaten und Status. CSRF-Schutz, Größenlimits, sichere Cookie-Vorgaben, CSP und Eingabevalidierung sind aktiv. Verändernde API-Aufrufe benötigen den Sessionwert als `X-CSRF-Token`.
+
+## API
+
+HTML: `GET /`, `/settings/providers`, `/privacy`. JSON: `POST /api/analyze`, `/api/optimize`, `/api/send`; Provider-CRUD samt Test/Modellen; Ollama-Status/Modelle und `/api/usage/summary`.
+
+## Einschränkungen
+
+CO₂-, Energie-, Kosten- und Dauerwerte sind konfigurierbare Beispielschätzungen, keine wissenschaftliche Messung, Abrechnung oder Garantie. Die Compliance-Prüfung ist keine Rechtsberatung. DNS-Rebinding kann ein MVP nicht vollständig ausschließen. Streaming, OAuth und providerspezifische Abweichungen sind nicht enthalten. Externe Integrationen werden in Tests gemockt.
