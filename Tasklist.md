@@ -1,9 +1,9 @@
 Berechnungsgrundlagen – Recherchen
-- CO₂
-- Token / Kosten
-- LLM‑Auswahl
-- Compliance Stufe 1/2
-- Routing Engine
+- CO₂ (macht Mario)
+- Token / Kosten (macht Enver)
+- LLM‑Auswahl (macht Enver)
+- Compliance Stufe 1/2 (macht Keng)
+- Routing Engine (macht Mario, aber wahrschl. Überlappung zu LLM Auswahl)
 
 Implementierung Berechnungsgrundlagen
 - Beispiel: Steering Files
