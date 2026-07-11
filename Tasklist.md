@@ -7,7 +7,7 @@ Berechnungsgrundlagen – Recherchen
 
 Implementierung Berechnungsgrundlagen
 - Beispiel: Steering Files
-- Alternativen
+- Alternativen (macht Mario in Vorbereitung zur Implementierung)
 
 ----
 
