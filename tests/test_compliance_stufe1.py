@@ -92,3 +92,68 @@ def test_multiple_validated_pii_findings_still_reach_red():
 def test_redaction_masks_only_validated_credit_cards():
     assert "4111111111111111" not in redact_sensitive("Karte 4111111111111111 bitte sperren.")
     assert "1234567890123456" in redact_sensitive("Seriennummer 1234567890123456 notieren.")
+
+
+def test_phone_with_parenthesized_zero_after_country_code_is_detected():
+    for prompt in ("Tel: +49 (0) 30 12345678", "Tel: +49(0)30 12345678"):
+        assert "Telefonnummer" in inspect_prompt(prompt)["findings"], prompt
+
+
+def test_phone_with_spaced_slash_or_dash_separator_is_detected():
+    for prompt in ("Tel: 030 / 12345678", "Tel: +49 30 - 12345678", "Tel: 0521/ 123456"):
+        assert "Telefonnummer" in inspect_prompt(prompt)["findings"], prompt
+
+
+def test_parenthesized_area_code_is_detected():
+    assert "Telefonnummer" in inspect_prompt("Tel: (030) 12345678")["findings"]
+
+
+def test_dates_and_segmented_ids_are_not_phone_numbers():
+    for prompt in (
+        "Zeitraum 01/02/2023 bis 05/06/2024.",
+        "Beschäftigt von 07/2019-06/2023 als Projektleiter.",
+        "Vorgangs-ID: 2026-0815-4711-0042 bitte angeben.",
+        "Vertragsnummer 0815-4711-2026 liegt bei.",
+    ):
+        assert "Telefonnummer" not in inspect_prompt(prompt)["findings"], prompt
+
+
+def test_credit_card_followed_by_expiry_or_cvv_is_detected():
+    for prompt in (
+        "Kartennummer 4532 0151 1283 0366 12/27",
+        "Kartennummer 4532 0151 1283 0366 123",
+    ):
+        assert "Kreditkartennummer" in inspect_prompt(prompt)["findings"], prompt
+
+
+def test_all_zero_placeholder_is_not_a_credit_card():
+    result = inspect_prompt("Kartennummer im Format 0000 0000 0000 0000 eingeben.")
+    assert "Kreditkartennummer" not in result["findings"]
+
+
+def test_iban_followed_by_four_char_token_is_detected():
+    # AT61 1904 3002 3457 3201: Mod-97-gültiger Standard-Testwert für Österreich.
+    for prompt in (
+        "Konto AT61 1904 3002 3457 3201 2026 kündigen.",
+        "IBAN DE89-3704-0044-0532-0130-00 verwenden.",
+    ):
+        assert "IBAN" in inspect_prompt(prompt)["findings"], prompt
+
+
+def test_iban_check_digits_outside_iso_range_are_rejected():
+    # Mod-97-Rest 1, aber Prüfziffern 00 sind nach ISO 13616 unzulässig.
+    result = inspect_prompt("Konto DE00654674621684760460 im Formular.")
+    assert "IBAN" not in result["findings"]
+
+
+def test_grouped_iban_does_not_also_trigger_phone():
+    result = inspect_prompt("Konto DE89 3704 0044 0532 0130 00 bitte nutzen.")
+    assert result["findings"] == ["IBAN"]
+
+
+def test_nbsp_separated_card_and_iban_are_detected():
+    # Geschützte Leerzeichen (U+00A0) bleiben beim Kopieren aus Word/PDF oft erhalten.
+    card = "Karte 4111\u00a01111\u00a01111\u00a01111 sperren."
+    iban = "Konto DE89\u00a03704\u00a00044\u00a00532\u00a00130\u00a000 nutzen."
+    assert "Kreditkartennummer" in inspect_prompt(card)["findings"]
+    assert "IBAN" in inspect_prompt(iban)["findings"]
