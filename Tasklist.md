@@ -1,3 +1,19 @@
+Berechnungsgrundlagen – Recherchen
+- CO₂ (macht Mario)
+- Token / Kosten (macht Enver)
+- LLM‑Auswahl (macht Enver)
+- Compliance Stufe 1/2 (macht Keng)
+- Routing Engine (macht Mario, aber wahrschl. Überlappung zu LLM Auswahl)
+
+Allgemeiner Task für alle
+- App analyiseren und Verbesserungsvorschläge
+
+Implementierung Berechnungsgrundlagen
+- Beispiel: Steering Files
+- Alternativen (macht Mario in Vorbereitung zur Implementierung)
+- Auswahl des lokalen LLMs ( Tests)
+----
+
 8‑Wochen‑Taskliste**, so dass ihr **spätestens am 10.09.** eine stabile Live‑Demo für Euer Projekt *Sustainable AI Gateway*, inklusive einer **vollen Woche Puffer für den Dry‑Run**.  
 
 ---
