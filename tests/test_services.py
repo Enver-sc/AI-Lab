@@ -1,7 +1,8 @@
 from cryptography.fernet import Fernet
 from app.services.token_service import estimate_tokens
 from app.services.compliance_service import inspect_prompt, redact_sensitive
-from app.services.cost_service import estimate_cost
+from app.services.cost_service import estimate_cost, estimate_electricity_cost
+from app.services.model_catalog import MODELS
 from app.services.sustainability_service import estimate_sustainability
 from app.services.recommendation_service import recommend
 from app.services.encryption_service import EncryptionService
@@ -27,8 +28,15 @@ def test_natural_language_password_is_detected_and_masked():
 def test_cost():
     assert estimate_cost(1_000_000,500_000,{"input_cost":2,"output_cost":4})==4
 
+def test_electricity_cost():
+    assert estimate_electricity_cost(2.0, 0.35) == 0.7
+
 def test_co2():
     assert estimate_sustainability(1000,1000,{"input_energy":.01,"output_energy":.02},100)["co2_grams"]==3
+
+def test_models_carry_ecologits_fields():
+    eco_keys = {"ecologits_provider","eco_active_params_b","eco_total_params_b","eco_datacenter_pue","eco_datacenter_wue","eco_electricity_mix_zone"}
+    assert all(eco_keys.issubset(model.keys()) for model in MODELS)
 
 def test_sensitive_recommendation_is_local():
     compliance={"contains_personal_data":True,"contains_confidential_data":False,"level":"yellow"}

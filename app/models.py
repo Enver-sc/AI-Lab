@@ -18,6 +18,14 @@ class ProviderConfiguration(db.Model):
     context_window = db.Column(db.Integer, default=8192)
     timeout_seconds = db.Column(db.Float, default=30)
     custom_headers_json = db.Column(db.Text, default="{}")
+    # Nur gesetzt, wenn bestätigt ist, dass der Endpunkt wirklich das echte Modell dieses
+    # Anbieters ist -- sonst nutzt ecologits_service.py den parameteranzahl-basierten Pfad.
+    ecologits_provider = db.Column(db.String(40))
+    eco_active_params_b = db.Column(db.Float)
+    eco_total_params_b = db.Column(db.Float)
+    eco_datacenter_pue = db.Column(db.Float)
+    eco_datacenter_wue = db.Column(db.Float)
+    eco_electricity_mix_zone = db.Column(db.String(3))
     created_at = db.Column(db.DateTime(timezone=True), default=now)
     updated_at = db.Column(db.DateTime(timezone=True), default=now, onupdate=now)
 

@@ -5,7 +5,8 @@ from ..extensions import db
 from ..models import ProviderConfiguration, UsageLog
 from ..services.analysis_service import analyze_with_ollama, parse_analysis
 from ..services.compliance_service import inspect_prompt
-from ..services.cost_service import estimate_cost
+from ..services.cost_service import estimate_cost, estimate_electricity_cost
+from ..services.ecologits_service import compute_impacts
 from ..services.encryption_service import EncryptionService, EncryptionUnavailable, mask_secret
 from ..services.ollama_service import OllamaError, OllamaService
 from ..services.recommendation_service import recommend
@@ -18,6 +19,10 @@ from ..providers.base import ProviderError
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 def error(message, status=400): return jsonify(error=message), status
+def optional_float(value):
+    if value in (None, ""):
+        return None
+    return float(value)
 def prompt_from_body():
     data = request.get_json(silent=True) or {}; prompt = data.get("prompt", "")
     if not isinstance(prompt, str) or not prompt.strip(): raise ValueError("Bitte einen Prompt eingeben.")
@@ -28,7 +33,46 @@ def serialize_provider(p):
     if p.encrypted_api_key:
         try: masked = mask_secret(EncryptionService(current_app.config["APP_ENCRYPTION_KEY"]).decrypt(p.encrypted_api_key))
         except EncryptionUnavailable: masked = "*** (nicht entschlüsselbar)"
-    return {"id":p.id,"name":p.name,"provider_type":p.provider_type,"base_url":p.base_url,"api_key_masked":masked,"has_api_key":bool(p.encrypted_api_key),"model_name":p.model_name,"hosting_region":p.hosting_region,"is_eu_hosted":p.is_eu_hosted,"enabled":p.enabled,"input_cost_per_million":p.input_cost_per_million,"output_cost_per_million":p.output_cost_per_million,"context_window":p.context_window,"timeout_seconds":p.timeout_seconds,"custom_headers":json.loads(p.custom_headers_json or "{}")}
+    return {"id":p.id,"name":p.name,"provider_type":p.provider_type,"base_url":p.base_url,"api_key_masked":masked,"has_api_key":bool(p.encrypted_api_key),"model_name":p.model_name,"hosting_region":p.hosting_region,"is_eu_hosted":p.is_eu_hosted,"enabled":p.enabled,"input_cost_per_million":p.input_cost_per_million,"output_cost_per_million":p.output_cost_per_million,"context_window":p.context_window,"timeout_seconds":p.timeout_seconds,"custom_headers":json.loads(p.custom_headers_json or "{}"),"ecologits_provider":p.ecologits_provider,"eco_active_params_b":p.eco_active_params_b,"eco_total_params_b":p.eco_total_params_b,"eco_datacenter_pue":p.eco_datacenter_pue,"eco_datacenter_wue":p.eco_datacenter_wue,"eco_electricity_mix_zone":p.eco_electricity_mix_zone}
+def sustainability_for(tokens, output, model, duration, carbon_intensity):
+    formula = estimate_sustainability(tokens, output, model, carbon_intensity)
+    eco_result, eco_warning = compute_impacts(
+        output, duration["max_seconds"], provider=None, catalog_model=model, app_config=current_app.config
+    )
+    merged = {**formula, **(eco_result or {})}
+    # Nur fuer lokale Modelle: der Anbieterpreis ("Kosten") ist bei Cloud-/EU-Modellen der tatsaechlich
+    # zu zahlende Preis (inkl. der -- meist guenstigeren -- Stromkosten des Anbieters), waehrend bei
+    # lokalen Modellen "Kosten" immer 0 ist, obwohl real Strom verbraucht wird. Fuer Cloud/EU wuerde
+    # eine zusaetzliche, mit dem Haushaltsstrompreis geschaetzte "Stromkosten"-Zahl einen Betrag
+    # suggerieren, den der Nutzer nicht selbst zahlt.
+    merged["electricity_cost_eur"] = (
+        estimate_electricity_cost(merged["energy_kwh"], current_app.config["ELECTRICITY_PRICE_EUR_PER_KWH"])
+        if model.get("hosting_region") == "Lokal" else None
+    )
+    return merged, eco_warning
+
+def optimized_payload(optimized_prompt, analysis, compliance, tokens, output, mode, carbon_intensity):
+    tokens_opt = estimate_tokens(optimized_prompt)
+    # Heuristische Annahme, nicht Teil der EcoLogits-Methodik: EcoLogits' Formel haengt nur von
+    # der Anzahl der Ausgabe-Token ab, nicht vom Prompt selbst -- ohne eine Annahme dazu waere
+    # der CO2-Vergleich original/optimiert immer identisch. Wir nehmen an, dass ein proportional
+    # kuerzerer Prompt tendenziell zu einer proportional kuerzeren Antwort fuehrt.
+    output_opt = max(1, round(output * tokens_opt / tokens))
+    model_opt, reason_opt = recommend(analysis, compliance, tokens_opt, mode)
+    # complexity_score stammt aus der Ollama-Analyse des Original-Prompts; der optimierte
+    # Prompt wird nicht erneut eigenstaendig bewertet, Dauer/Modellwahl sind also Naeherungen.
+    duration_opt = estimate_duration(tokens_opt, output_opt, analysis["complexity_score"], model_opt)
+    sustainability_opt, sustainability_opt_warning = sustainability_for(tokens_opt, output_opt, model_opt, duration_opt, carbon_intensity)
+    return {
+        "prompt_tokens": tokens_opt,
+        "expected_output_tokens": output_opt,
+        "recommendation": {**model_opt, "reason": reason_opt},
+        "estimated_cost": estimate_cost(tokens_opt, output_opt, model_opt),
+        "sustainability": sustainability_opt,
+        "sustainability_warning": sustainability_opt_warning,
+        "duration": duration_opt,
+    }
+
 def analysis_payload(prompt, mode="auto"):
     analysis_timeout = current_app.config.get("OLLAMA_ANALYSIS_TIMEOUT_SECONDS", 0)
     # requests uses None for an unlimited timeout. A positive value remains
@@ -47,8 +91,14 @@ def analysis_payload(prompt, mode="auto"):
     analysis["compliance_score"] = min(analysis["compliance_score"], compliance["score"])
     tokens = estimate_tokens(prompt); output = current_app.config["DEFAULT_EXPECTED_OUTPUT_TOKENS"]
     model, reason = recommend(analysis, compliance, tokens, mode)
-    sustainable = estimate_sustainability(tokens, output, model, current_app.config["CARBON_INTENSITY_G_PER_KWH"])
-    return {"analysis":analysis,"compliance":compliance,"input_tokens":tokens,"expected_output_tokens":output,"recommendation":{**model,"reason":reason},"estimated_cost":estimate_cost(tokens,output,model),"sustainability":sustainable,"duration":estimate_duration(tokens,output,analysis["complexity_score"],model),"warning":warning,"estimates_notice":"Konfigurierbare MVP-Schätzwerte; keine wissenschaftliche Messung oder Preisgarantie."}
+    carbon_intensity = current_app.config["CARBON_INTENSITY_G_PER_KWH"]
+    duration = estimate_duration(tokens, output, analysis["complexity_score"], model)
+    sustainability, sustainability_warning = sustainability_for(tokens, output, model, duration, carbon_intensity)
+    payload = {"analysis":analysis,"compliance":compliance,"input_tokens":tokens,"expected_output_tokens":output,"recommendation":{**model,"reason":reason},"estimated_cost":estimate_cost(tokens,output,model),"sustainability":sustainability,"sustainability_warning":sustainability_warning,"duration":duration,"warning":warning,"estimates_notice":"Konfigurierbare MVP-Schätzwerte; keine wissenschaftliche Messung oder Preisgarantie."}
+    optimized_prompt = analysis["optimized_prompt"].strip()
+    if optimized_prompt and optimized_prompt != prompt.strip():
+        payload["optimized"] = optimized_payload(optimized_prompt, analysis, compliance, tokens, output, mode, carbon_intensity)
+    return payload
 
 @api_bp.post("/analyze")
 def analyze():
@@ -78,9 +128,21 @@ def send():
     try: answer=provider_instance(provider).generate(prompt, provider.model_name)
     except (ProviderError,OllamaError,EncryptionUnavailable) as exc: return error(str(exc),502)
     latency=int((time.monotonic()-started)*1000); output=estimate_tokens(answer)
+    # Reale Nutzung: kein Formel-Fallback, wenn EcoLogits nicht verfuegbar ist -- entweder eine
+    # echte Zahl oder 0, nie ein erfundener Wert fuer tatsaechlich versendete Prompts.
+    eco_result, eco_warning = compute_impacts(output, latency/1000, provider=provider, catalog_model=None, app_config=current_app.config)
+    if eco_result:
+        # provider_type=="ollama" ist im Projekt bereits das etablierte Signal fuer "lokal" (siehe
+        # validate_provider_url's allow_localhost). Fuer Cloud/EU-Provider bleibt der Wert None --
+        # der Anbieterpreis ("estimated_cost") deckt deren tatsaechliche Kosten bereits ab.
+        eco_result["electricity_cost_eur"] = (
+            estimate_electricity_cost(eco_result["energy_kwh"], current_app.config["ELECTRICITY_PRICE_EUR_PER_KWH"])
+            if provider.provider_type == "ollama" else None
+        )
+    co2_grams = eco_result["co2_grams"] if eco_result else 0
     if current_app.config["ENABLE_PROMPT_LOGGING"]:
-        db.session.add(UsageLog(prompt_hash=hashlib.sha256(prompt.encode()).hexdigest(),input_tokens=tokens,estimated_output_tokens=output,provider_name=provider.name,model_name=provider.model_name,estimated_cost=tokens/1e6*provider.input_cost_per_million+output/1e6*provider.output_cost_per_million,estimated_co2_grams=0,compliance_score=compliance["score"],request_status="success",latency_ms=latency)); db.session.commit()
-    return jsonify(answer=answer, latency_ms=latency)
+        db.session.add(UsageLog(prompt_hash=hashlib.sha256(prompt.encode()).hexdigest(),input_tokens=tokens,estimated_output_tokens=output,provider_name=provider.name,model_name=provider.model_name,estimated_cost=tokens/1e6*provider.input_cost_per_million+output/1e6*provider.output_cost_per_million,estimated_co2_grams=co2_grams,compliance_score=compliance["score"],request_status="success",latency_ms=latency)); db.session.commit()
+    return jsonify(answer=answer, latency_ms=latency, sustainability=eco_result, sustainability_warning=eco_warning)
 
 @api_bp.get("/providers")
 def providers(): return jsonify([serialize_provider(p) for p in ProviderConfiguration.query.order_by(ProviderConfiguration.name).all()])
@@ -100,6 +162,15 @@ def apply_provider(p,data,creating=False):
     p.custom_headers_json=json.dumps(headers)
     api_key=data.get("api_key")
     if api_key: p.encrypted_api_key=EncryptionService(current_app.config["APP_ENCRYPTION_KEY"]).encrypt(str(api_key))
+    eco_provider = data.get("eco_provider") or None
+    if eco_provider and eco_provider not in {"openai", "anthropic", "cohere", "google_genai", "huggingface_hub", "mistralai"}:
+        raise ValueError("Unbekannter EcoLogits-Anbieter.")
+    p.ecologits_provider = eco_provider
+    p.eco_active_params_b = optional_float(data.get("eco_active_params_b"))
+    p.eco_total_params_b = optional_float(data.get("eco_total_params_b"))
+    p.eco_datacenter_pue = optional_float(data.get("eco_datacenter_pue"))
+    p.eco_datacenter_wue = optional_float(data.get("eco_datacenter_wue"))
+    p.eco_electricity_mix_zone = str(data.get("eco_electricity_mix_zone") or "").strip().upper()[:3] or None
     return p
 @api_bp.post("/providers")
 def create_provider():

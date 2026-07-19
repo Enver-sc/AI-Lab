@@ -119,3 +119,38 @@ Ich habe die Inhalte verdichtet, Prioritäten neu gesetzt und trotzdem eine **vo
 Ihr habt am 10.09. eine **stabile, lokal lauffähige Demo**, die CO₂‑Fußabdruck, Kosten, Dauer, Compliance und Optimierungsvorschläge für Prompts liefert.
 
 Wenn du willst, kann ich dir die Taskliste auch als **GitHub‑README‑Taskliste mit Checkboxen** formatieren.
+
+---
+
+## 📋 Backlog / Ideen (nicht priorisiert, nicht terminiert)
+
+### Dashboard: bildhafte Visualisierung der EcoLogits-Werte (Icons/Äquivalente)
+Idee: die reinen Zahlen (CO₂e, Energie, Wasser/ADPe, Stromkosten) zusätzlich mit
+kleinen, klar verständlichen Bildern/Symbolen unterlegen (z. B. Baum, Wasserglas),
+um die Botschaft emotional greifbarer zu machen.
+
+**Wichtiger Kalibrierungs-Befund, bevor das umgesetzt wird**: Pro-Prompt-Werte sind
+für wörtliche "Bäume/Wassergläser"-Äquivalente viel zu klein. Beispiel: ein Prompt
+erzeugte 0,0168 g CO₂e; ein Baum bindet ca. 21 kg CO₂/Jahr — das wären ca.
+1,25 Mio. Prompts pro Baum. "🌳 0,0000008 Bäume" wäre verwirrender als die reine
+Zahl, nicht klarer.
+
+Drei mögliche Bausteine (in der Diskussion mit Claude entstanden, noch nicht
+umgesetzt):
+- **(A) Icons als reine Kennzeichnung** an den bestehenden Stat-Kacheln (Baum für
+  CO₂e, Tropfen für Wasser, Glühbirne/Batterie für Energie, Münze für
+  Stromkosten) — keine wörtliche Mengenangabe, nur visuelle Zuordnung. Klein,
+  risikoarm, kein Backend-Bedarf.
+- **(B) Auf die tatsächliche (winzige) Größenordnung kalibrierte Alltags-Äquivalente**
+  pro Prompt, z. B. "≈ 0,4 Sekunden LED-Lampe" statt Bäume — Referenzwerte müssten
+  recherchiert und als grobe Richtwerte gekennzeichnet werden (wie die bestehenden
+  Schätzwerte im Projekt).
+- **(C) Neue kumulative Ansicht im Dashboard**, gespeist aus dem bereits
+  vorhandenen, aber im Frontend aktuell ungenutzten `/api/usage/summary`-Endpunkt
+  (summiert CO₂/Kosten über alle tatsächlich versendeten Prompts, sofern
+  `ENABLE_PROMPT_LOGGING=true`). Erst auf dieser aufsummierten Ebene ergeben
+  Baum-/Autofahrt-Äquivalente wieder sinnvolle Größenordnungen. Größerer Aufwand
+  (neue UI-Sektion), aber langfristig der Ort, an dem die Idee tatsächlich trägt.
+
+Empfehlung aus der Diskussion: (A) + (B) zuerst (klein, schnell), (C) als
+separates, größeres Stück Arbeit danach.
