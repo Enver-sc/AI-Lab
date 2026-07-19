@@ -73,7 +73,8 @@ flowchart TB
 | Ollama-Client | `app/services/ollama_service.py` | HTTP-Kommunikation mit Ollama |
 | Token-Schätzung | `app/services/token_service.py` | Lokale Token-Näherung |
 | Empfehlung | `app/services/recommendation_service.py` | Regelbasierte Modellwahl |
-| Schätzwerte | `app/services/cost_service.py`, `sustainability_service.py` | Kosten-, Energie-, CO₂- und Dauerberechnung |
+| Schätzwerte | `app/services/cost_service.py`, `sustainability_service.py` | Kosten-, Energie-, CO₂- und Dauerberechnung (Fallback-Formel) |
+| EcoLogits-Anbindung | `app/services/ecologits_service.py` | Methodikbasierte Energie-/CO₂-/Wasser-/ADPe-Berechnung, siehe [`ECOLOGITS_INTEGRATION.md`](ECOLOGITS_INTEGRATION.md) |
 | Modellkatalog | `app/services/model_catalog.py` | Konfigurierbare Demo-Modelle und Faktoren |
 | Verschlüsselung | `app/services/encryption_service.py` | Fernet-Verschlüsselung und Maskierung von API-Schlüsseln |
 | SSRF-Schutz | `app/services/url_security.py` | Prüft Provider-URLs und blockiert interne Netze |
@@ -211,12 +212,43 @@ Gesamtkosten  = Input-Kosten + Output-Kosten
 
 ### Energie und CO₂
 
+Primär berechnet `app/services/ecologits_service.py` (`compute_impacts`) die Werte über die
+EcoLogits-Bibliothek — Details, konfigurierbare Parameter und Rangfolge (Provider →
+Modellkatalog → globale Konfiguration) siehe [`ECOLOGITS_INTEGRATION.md`](ECOLOGITS_INTEGRATION.md).
+Ist EcoLogits deaktiviert, nicht installierbar oder liefert keinen Wert (z. B. fehlende
+Parameteranzahl, unbekanntes Modell), greift als Fallback die folgende einfache Formel aus
+`sustainability_service.py`:
+
 ```text
 Energie = Input-Token / 1.000 × Input-Energiefaktor
         + Output-Token / 1.000 × Output-Energiefaktor
 
 CO₂e = Energie × CO₂-Intensität
 ```
+
+**Vergleich Original- vs. optimierter Prompt**: `/api/analyze` berechnet bei abweichendem
+Optimierungsvorschlag (`analysis.optimized_prompt`) dieselben Kennzahlen zusätzlich für den
+optimierten Prompt (`optimized`-Schlüssel in der Antwort). Da EcoLogits' Formel ausschließlich
+von der Ausgabe-Tokenanzahl abhängt, nicht vom Prompt selbst, wäre der CO₂-Vergleich ohne
+weitere Annahme immer identisch. `analysis_payload()`/`optimized_payload()` in `app/routes/api.py`
+skalieren daher die erwartete Ausgabelänge proportional zum Verhältnis der Prompt-Tokenanzahlen
+(`output_opt = output × tokens_opt / tokens`) — eine explizit dokumentierte Heuristik, kein Teil
+der EcoLogits-Methodik. Die dritte Vergleichskachel im Dashboard ("Finale CO₂e-Bilanz") zeigt die
+vorzeichenbehaftete prozentuale Differenz — positiv (rot) bedeutet mehr CO₂e durch die
+Optimierung, negativ (grün) weniger.
+
+### Stromkosten
+
+Der Anbieterpreis ("Kosten") ist bei lokalen Modellen im Katalog immer `0`, da es keine
+API-Abrechnung gibt — echter Strom wird trotzdem verbraucht. `cost_service.estimate_electricity_cost`
+multipliziert den geschätzten Energieverbrauch (`sustainability.energy_kwh`, aus EcoLogits oder der
+Fallback-Formel) mit dem konfigurierbaren `ELECTRICITY_PRICE_EUR_PER_KWH` (Default `0.35`, grober
+Richtwert für einen deutschen Haushaltsstrompreis) und liefert `sustainability.electricity_cost_eur`
+als eigenständige, vom Anbieterpreis unabhängige Kennzahl — **nur für lokale Modelle**
+(`model["hosting_region"] == "Lokal"` bzw. `provider.provider_type == "ollama"`), sonst `null`.
+Bei Cloud-/EU-Modellen deckt der Anbieterpreis deren Stromkosten bereits ab; eine zusätzliche,
+mit dem Haushaltsstrompreis geschätzte Zahl würde dort einen Betrag suggerieren, den der Nutzer
+nicht selbst zahlt.
 
 ### Dauer
 
@@ -287,6 +319,12 @@ erDiagram
         int context_window
         float timeout_seconds
         text custom_headers_json
+        string ecologits_provider
+        float eco_active_params_b
+        float eco_total_params_b
+        float eco_datacenter_pue
+        float eco_datacenter_wue
+        string eco_electricity_mix_zone
         datetime created_at
         datetime updated_at
     }
@@ -348,5 +386,5 @@ Zwischen den Tabellen besteht bewusst kein Fremdschlüssel. Nutzungslogs bleiben
 python -m pytest -q
 ```
 
-Die Tests decken Token-, Compliance-, Maskierungs-, Kosten-, CO₂-, Empfehlungs-, Ollama-, Verschlüsselungs-, Routing-, EU-, CSRF/MIME- und SSRF-Verhalten ab. Bei einer Erweiterung sollte immer zuerst der Service angepasst und danach ein passender Test ergänzt werden.
+Die Tests decken Token-, Compliance-, Maskierungs-, Kosten-, CO₂-, EcoLogits-, Empfehlungs-, Ollama-, Verschlüsselungs-, Routing-, EU-, CSRF/MIME- und SSRF-Verhalten ab. Bei einer Erweiterung sollte immer zuerst der Service angepasst und danach ein passender Test ergänzt werden.
 

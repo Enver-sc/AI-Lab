@@ -2,12 +2,12 @@
 
 Eine ausführliche Erklärung mit Architektur-, Ablauf-, Compliance-, Datenbank- und Sicherheitsdiagrammen befindet sich in der [technischen Dokumentation](docs/TECHNISCHE_DOKUMENTATION.md).
 
-Lokales Flask-MVP zur Vorabanalyse von Prompts. Ollama liefert möglichst eine strukturierte lokale Analyse; lokale Regeln ergänzen Compliance-Funde, Token-, Kosten-, Energie-, CO₂- und Dauer-Schätzungen sowie eine nachvollziehbare Modellempfehlung.
+Lokales Flask-MVP zur Vorabanalyse von Prompts. Ollama liefert möglichst eine strukturierte lokale Analyse; lokale Regeln ergänzen Compliance-Funde, Token-, Kosten-, Energie-, CO₂- und Dauer-Schätzungen sowie eine nachvollziehbare Modellempfehlung. Energie/CO₂/Wasser/Ressourcenverbrauch werden, wo konfiguriert, über [EcoLogits](docs/ECOLOGITS_INTEGRATION.md) berechnet; ohne passende Konfiguration greift eine einfache Fallback-Formel. Zusätzlich zum Anbieterpreis ("Kosten", bei lokalen Modellen immer 0 €) wird eine unabhängige, geschätzte Stromkosten-Kennzahl aus dem geschätzten Energieverbrauch angezeigt (`ELECTRICITY_PRICE_EUR_PER_KWH`).
 
 ## Architektur
 
 - `app/routes`: HTML- und JSON-API-Blueprints
-- `app/services`: Analyse, Compliance, Schätzungen, Verschlüsselung und SSRF-Schutz
+- `app/services`: Analyse, Compliance, Schätzungen (inkl. EcoLogits-Anbindung), Verschlüsselung und SSRF-Schutz
 - `app/providers`: Ollama und OpenAI-kompatible APIs hinter einer gemeinsamen Abstraktion
 - `app/templates`, `app/static`: Jinja, Vanilla JavaScript und responsives CSS
 - `app/models.py`: Provider und optionale, promptfreie Nutzungslogs
@@ -69,8 +69,8 @@ Prompts werden standardmäßig nicht gespeichert. `ENABLE_PROMPT_LOGGING=true` s
 
 ## API
 
-HTML: `GET /`, `/settings/providers`, `/privacy`. JSON: `POST /api/analyze`, `/api/optimize`, `/api/send`; Provider-CRUD samt Test/Modellen; Ollama-Status/Modelle und `/api/usage/summary`.
+HTML: `GET /`, `/settings/providers`, `/privacy`. JSON: `POST /api/analyze`, `/api/optimize`, `/api/send`; Provider-CRUD samt Test/Modellen; Ollama-Status/Modelle und `/api/usage/summary`. `/api/analyze` liefert bei abweichendem Optimierungsvorschlag zusätzlich `optimized` (dieselben Kennzahlen für den optimierten Prompt); `/api/send` liefert die real gemessene `sustainability`.
 
 ## Einschränkungen
 
-CO₂-, Energie-, Kosten- und Dauerwerte sind konfigurierbare Beispielschätzungen, keine wissenschaftliche Messung, Abrechnung oder Garantie. Die Compliance-Prüfung ist keine Rechtsberatung. DNS-Rebinding kann ein MVP nicht vollständig ausschließen. Streaming, OAuth und providerspezifische Abweichungen sind nicht enthalten. Externe Integrationen werden in Tests gemockt.
+CO₂-, Energie-, Kosten- und Dauerwerte sind konfigurierbare Beispielschätzungen, keine wissenschaftliche Messung, Abrechnung oder Garantie. Die Compliance-Prüfung ist keine Rechtsberatung. DNS-Rebinding kann ein MVP nicht vollständig ausschließen. Streaming, OAuth und providerspezifische Abweichungen sind nicht enthalten. Externe Integrationen werden in Tests gemockt. Der CO₂-Vergleich zwischen Original- und optimiertem Prompt beruht auf einer zusätzlichen Annahme (nicht Teil von EcoLogits): dass ein kürzerer Prompt zu einer proportional kürzeren Antwort führt — EcoLogits' Formel selbst hängt nur von der erwarteten Ausgabelänge ab, nicht vom Prompt.

@@ -68,9 +68,37 @@
       syncSend();
     }
 
+    function renderSustainabilityTiles(sustainability) {
+      element("#co2").textContent = sustainability.co2_grams + " g";
+      element("#energy").textContent = sustainability.energy_kwh + " kWh";
+      element("#water").textContent = sustainability.water_liters != null ? sustainability.water_liters + " L" : "–";
+      element("#adpe").textContent = sustainability.adpe_ug_sb_eq != null ? sustainability.adpe_ug_sb_eq + " µg Sb-Äq." : "nicht verfügbar";
+      element("#electricity-cost").textContent = sustainability.electricity_cost_eur != null ? "€ " + sustainability.electricity_cost_eur.toFixed(6) : "– (nur lokal)";
+    }
+
+    function renderOptimizationComparison(data) {
+      var comparison = element("#optimization-comparison");
+      if (!data.optimized) { comparison.hidden = true; return; }
+      comparison.hidden = false;
+      var original = data.sustainability.co2_grams;
+      var optimized = data.optimized.sustainability.co2_grams;
+      element("#co2-original").textContent = original + " g";
+      element("#co2-optimized").textContent = optimized + " g";
+      var balance = element("#co2-saving");
+      if (original > 0) {
+        // Positiv = optimierter Prompt verursacht mehr CO2e als das Original, negativ = weniger.
+        var deltaPct = Math.round((optimized - original) / original * 100);
+        balance.textContent = (deltaPct > 0 ? "+" : "") + deltaPct + " %";
+        balance.className = deltaPct > 0 ? "red" : (deltaPct < 0 ? "green" : "");
+      } else {
+        balance.textContent = "–";
+        balance.className = "";
+      }
+    }
+
     function render(data) {
       last = data;
-      element("#co2").textContent = data.sustainability.co2_grams + " g";
+      renderSustainabilityTiles(data.sustainability);
       element("#cost").textContent = "€ " + data.estimated_cost.toFixed(6);
       element("#duration").textContent = data.duration.min_seconds + "–" + data.duration.max_seconds + " s";
       element("#compliance").textContent = data.compliance.score + "/100";
@@ -82,8 +110,10 @@
       element("#eu").textContent = data.recommendation.is_eu_hosted ? "Ja" : "Nein";
       element("#suggestions").innerHTML = data.analysis.optimization_suggestions.map(function (item) { return "<li>" + item + "</li>"; }).join("");
       element("#optimized").value = data.analysis.optimized_prompt;
+      renderOptimizationComparison(data);
       element("#send-summary").textContent = "Empfehlung: " + data.recommendation.display_name + " · " + data.recommendation.hosting_region + " · Kosten €" + data.estimated_cost.toFixed(6) + " · CO₂e " + data.sustainability.co2_grams + " g · Risiko " + data.compliance.level.toUpperCase();
-      if (data.warning) toast(data.warning);
+      var warnings = [data.warning, data.sustainability_warning].filter(Boolean);
+      if (warnings.length) toast(warnings.join(" "));
       syncSend();
     }
 
@@ -127,7 +157,9 @@
         var data = await api("/api/send", {method: "POST", body: JSON.stringify({prompt: prompt.value, provider_id: Number(id), eu_only: euOnly, override_reason: element("#override").value})});
         element("#answer").style.display = "block"; element("#answer").textContent = data.answer;
         if (element("#discard").checked) { prompt.value = ""; element("#optimized").value = ""; updateCounter(); }
-        toast("Antwort erhalten (" + data.latency_ms + " ms). ");
+        var summary = "Antwort erhalten (" + data.latency_ms + " ms). ";
+        if (data.sustainability) summary += "Tatsächliches CO₂e " + data.sustainability.co2_grams + " g. ";
+        toast(summary + (data.sustainability_warning || ""));
       } catch (error) { toast(error.message); }
     }
 

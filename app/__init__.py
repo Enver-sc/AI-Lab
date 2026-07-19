@@ -2,7 +2,7 @@ import secrets
 from flask import Flask, jsonify, request, session
 from dotenv import load_dotenv
 from config import Config
-from .extensions import db
+from .extensions import db, ensure_schema_upgrades
 
 def create_app(config_object=Config):
     load_dotenv()
@@ -43,4 +43,5 @@ def create_app(config_object=Config):
     @app.errorhandler(404)
     def not_found(_): return jsonify(error="Nicht gefunden."), 404
     with app.app_context(): db.create_all()
+    ensure_schema_upgrades(app)
     return app
