@@ -43,6 +43,37 @@ def test_harmless_prompt_reaches_model_unchanged(client, csrf):
     assert response.get_json()["warning"] is None
 
 
+def test_fallback_keeps_masking_and_combines_warnings(client, csrf):
+    with patch("app.routes.api.OllamaService") as service_class:
+        service_class.return_value.generate.return_value = "keine json antwort"
+        response = client.post(
+            "/api/optimize",
+            json={"prompt": f"Überweise 50 Euro an {IBAN}."},
+            headers={"X-CSRF-Token": csrf},
+        )
+    assert response.status_code == 200
+    data = response.get_json()
+    assert IBAN not in data["optimized_prompt"]
+    assert IBAN_MASKED in data["optimized_prompt"]
+    assert "sichere Standardwerte" in data["warning"]
+    assert REDACTION_NOTICE in data["warning"]
+
+
+def test_masked_echo_creates_no_optimized_block(client, csrf):
+    echo_reply = json.dumps({"optimized_prompt": f"Meine IBAN ist {IBAN_MASKED}."})
+    with patch("app.routes.api.OllamaService") as service_class:
+        service_class.return_value.generate.return_value = echo_reply
+        response = client.post(
+            "/api/analyze",
+            json={"prompt": f"Meine IBAN ist {IBAN}."},
+            headers={"X-CSRF-Token": csrf},
+        )
+    assert response.status_code == 200
+    data = response.get_json()
+    assert "optimized" not in data
+    assert REDACTION_NOTICE in data["warning"]
+
+
 def test_issue2_regression_iban_via_optimize_endpoint(client, csrf):
     response, generate = call_with_mocked_model(
         client, csrf, f"Überweise 50 Euro an {IBAN}.", endpoint="/api/optimize"
