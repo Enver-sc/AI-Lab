@@ -52,7 +52,7 @@ ollama serve
 
 ## Start, Datenbank und Tests
 
-SQLite und Tabellen werden beim ersten Start automatisch im `instance`-Verzeichnis angelegt.
+SQLite und Tabellen werden beim ersten Start automatisch im `instance`-Verzeichnis angelegt. Die Datei `instance/gateway.db` ist deshalb nicht versioniert, sondern entsteht beim ersten Start lokal.
 
 ```bash
 flask --app app run --debug

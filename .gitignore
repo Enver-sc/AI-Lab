@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Umgebung / Secrets
+.env
+
+# Lokale Instanz-Datenbank (entsteht beim ersten Start automatisch)
+instance/gateway.db
+
+# macOS
+.DS_Store
