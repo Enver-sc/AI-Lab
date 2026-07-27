@@ -4,7 +4,7 @@ from sqlalchemy import func
 from ..extensions import db
 from ..models import ProviderConfiguration, UsageLog
 from ..services.analysis_service import analyze_with_ollama, parse_analysis
-from ..services.compliance_service import inspect_prompt
+from ..services.compliance_service import inspect_prompt, redact_sensitive
 from ..services.cost_service import estimate_cost, estimate_electricity_cost
 from ..services.ecologits_service import compute_impacts
 from ..services.encryption_service import EncryptionService, EncryptionUnavailable, mask_secret
@@ -96,7 +96,9 @@ def analysis_payload(prompt, mode="auto"):
     sustainability, sustainability_warning = sustainability_for(tokens, output, model, duration, carbon_intensity)
     payload = {"analysis":analysis,"compliance":compliance,"input_tokens":tokens,"expected_output_tokens":output,"recommendation":{**model,"reason":reason},"estimated_cost":estimate_cost(tokens,output,model),"sustainability":sustainability,"sustainability_warning":sustainability_warning,"duration":duration,"warning":warning,"estimates_notice":"Konfigurierbare MVP-Schätzwerte; keine wissenschaftliche Messung oder Preisgarantie."}
     optimized_prompt = analysis["optimized_prompt"].strip()
-    if optimized_prompt and optimized_prompt != prompt.strip():
+    # Auch das blosse Echo des maskierten Prompts ist keine Optimierung — sonst
+    # entstuende ein Vergleichsblock, dessen Ersparnis nur aus der Maskierung stammt.
+    if optimized_prompt and optimized_prompt not in (prompt.strip(), redact_sensitive(prompt).strip()):
         payload["optimized"] = optimized_payload(optimized_prompt, analysis, compliance, tokens, output, mode, carbon_intensity)
     return payload
 

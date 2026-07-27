@@ -69,7 +69,7 @@ Prompts werden standardmäßig nicht gespeichert. `ENABLE_PROMPT_LOGGING=true` s
 
 ## API
 
-HTML: `GET /`, `/settings/providers`, `/privacy`. JSON: `POST /api/analyze`, `/api/optimize`, `/api/send`; Provider-CRUD samt Test/Modellen; Ollama-Status/Modelle und `/api/usage/summary`. `/api/analyze` liefert bei abweichendem Optimierungsvorschlag zusätzlich `optimized` (dieselben Kennzahlen für den optimierten Prompt); `/api/send` liefert die real gemessene `sustainability`.
+HTML: `GET /`, `/settings/providers`, `/privacy`. JSON: `POST /api/analyze`, `/api/optimize`, `/api/send`; Provider-CRUD samt Test/Modellen; Ollama-Status/Modelle und `/api/usage/summary`. `/api/analyze` liefert bei abweichendem Optimierungsvorschlag zusätzlich `optimized` (dieselben Kennzahlen für den optimierten Prompt); `/api/send` liefert die real gemessene `sustainability`. Vor dem Aufruf des lokalen Analyse-/Optimierungsmodells maskieren `/api/analyze` und `/api/optimize` erkannte sensible Werte (z. B. IBAN, Kreditkartennummer) per `redact_sensitive`; Compliance-Prüfung und Trefferanzeige arbeiten weiter auf dem Original, und das `warning`-Feld weist auf die Maskierung hin. Platzhalter bleiben im optimierten Prompt sichtbar und werden nicht zurückgetauscht.
 
 ## Einschränkungen
 
