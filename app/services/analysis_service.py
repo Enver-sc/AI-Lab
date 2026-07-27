@@ -28,9 +28,11 @@ REDACTION_NOTICE = "Sensible Daten wurden vor der Übergabe an das Analyse-/Opti
 def analyze_with_ollama(prompt: str, service: OllamaService) -> tuple[dict, str | None]:
     # Issue #2: erkannte sensible Werte (z. B. IBAN) duerfen das Modell nie im
     # Klartext erreichen. Anzeige und Compliance laufen weiter auf dem Original.
+    # Auch der Fallback-optimized_prompt bleibt maskiert, damit die Antwort nie
+    # Klartext als "optimierten" Prompt ausweist.
     redacted = redact_sensitive(prompt)
     raw = service.generate(redacted, SYSTEM_PROMPT)
-    result, warning = parse_analysis(raw, prompt)
+    result, warning = parse_analysis(raw, redacted)
     if redacted != prompt:
         warning = f"{warning} {REDACTION_NOTICE}" if warning else REDACTION_NOTICE
     return result, warning
