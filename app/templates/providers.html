@@ -1,2 +1,51 @@
-{% extends 'base.html' %}{% block title %}Provider · Sustainable AI Gateway{% endblock %}{% block content %}<section class="page-head"><div><span class="eyebrow">Einstellungen</span><h1>KI-Provider</h1><p>OpenAI-kompatible, EU-gehostete und lokale Endpunkte sicher konfigurieren.</p></div></section>{% if not encryption_available %}<div class="alert warning">APP_ENCRYPTION_KEY fehlt. API-Schlüssel können nicht gespeichert werden.</div>{% endif %}<div class="settings-grid"><form id="provider-form" class="panel"><input type="hidden" id="provider-id"><h2 id="form-title">Provider anlegen</h2><div class="form-grid"><label>Anzeigename<input id="name" required></label><label>Provider-Typ<select id="provider-type"><option value="openai_compatible">OpenAI-kompatibel</option><option value="eu_openai_compatible">EU-gehostet (OpenAI-kompatibel)</option><option value="ollama">Lokales Ollama</option><option value="custom">Benutzerdefiniert</option></select></label><label class="wide">API Base URL<input id="base-url" type="url" required placeholder="https://api.example.eu/v1"></label><label>API-Key<input id="api-key" type="password" autocomplete="new-password" placeholder="Leer lassen zum Beibehalten"></label><label>Modellname<input id="model-name" required></label><label>Hosting-Region<input id="hosting-region" value="EU"></label><label>Input-Preis / Mio. Token<input id="input-cost" type="number" min="0" step="0.0001" value="0"></label><label>Output-Preis / Mio. Token<input id="output-cost" type="number" min="0" step="0.0001" value="0"></label><label>Kontextfenster<input id="context-window" type="number" min="1" value="8192"></label><label>Timeout (Sek.)<input id="timeout" type="number" min="1" max="120" value="30"></label><label class="wide">Benutzerdefinierte Header (JSON)<textarea id="headers">{}</textarea></label><span class="wide eyebrow">Erweitert: EcoLogits (optional)</span><label class="wide">EcoLogits-Anbieter<select id="eco-provider"><option value="">Nicht gesetzt (manuelle Schätzung)</option><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option><option value="cohere">Cohere</option><option value="google_genai">Google GenAI</option><option value="huggingface_hub">Hugging Face Hub</option><option value="mistralai">Mistral AI</option></select><small>Nur setzen, wenn der Endpunkt nachweislich das echte Modell dieses Anbieters ist.</small></label><label>Aktive Parameter (Mrd.)<input id="eco-active-params" type="number" min="0" step="0.1"></label><label>Gesamtparameter (Mrd.)<input id="eco-total-params" type="number" min="0" step="0.1"></label><label>Rechenzentrum PUE<input id="eco-pue" type="number" min="1" step="0.01"></label><label>Rechenzentrum WUE<input id="eco-wue" type="number" min="0" step="0.01"></label><label>Strommix-Zone (ISO 3166-1 alpha-3)<input id="eco-zone" maxlength="3" placeholder="z. B. DEU"></label></div><div class="inline-checks"><label class="check"><input id="is-eu" type="checkbox"> EU-gehostet</label><label class="check"><input id="enabled" type="checkbox" checked> Aktiviert</label></div><div class="actions"><button class="primary" type="submit">Speichern</button><button id="cancel" type="button">Abbrechen</button></div></form><section class="panel"><h2>Konfigurierte Provider</h2><div id="provider-list"></div></section></div>{% endblock %}{% block scripts %}<script src="{{ url_for('static',filename='js/providers.js') }}" defer></script>{% endblock %}
-
+{% extends 'base.html' %}
+{% block title %}Provider · Sustainable AI Gateway{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <span class="eyebrow">Einstellungen</span>
+    <h1>KI-Provider</h1>
+    <p>Anthropic-, OpenAI-kompatible, EU-gehostete und lokale Endpunkte sicher konfigurieren.</p>
+  </div>
+</section>
+{% if not encryption_available %}
+<div class="alert warning">APP_ENCRYPTION_KEY fehlt. API-Schlüssel können nicht gespeichert werden.</div>
+{% endif %}
+<div class="settings-grid">
+  <form id="provider-form" class="panel">
+    <input type="hidden" id="provider-id">
+    <h2 id="form-title">Provider anlegen</h2>
+    <div class="form-grid">
+      <label>Anzeigename<input id="name" required></label>
+      <label>Provider-Typ<select id="provider-type"><option value="anthropic">Anthropic Claude</option><option value="openai_compatible">OpenAI-kompatibel</option><option value="eu_openai_compatible">EU-gehostet (OpenAI-kompatibel)</option><option value="ollama">Lokales Ollama</option><option value="custom">Benutzerdefiniert</option></select></label>
+      <label class="wide">API Base URL<input id="base-url" type="url" required placeholder="https://api.anthropic.com"></label>
+      <label>API-Key<input id="api-key" type="password" autocomplete="new-password" placeholder="Leer lassen zum Beibehalten"></label>
+      <label id="model-name-field">Modellname<input id="model-name" list="anthropic-models" required><datalist id="anthropic-models"><option value="claude-haiku-4-5-20251001">Claude Haiku 4.5</option><option value="claude-sonnet-4-6">Claude Sonnet 4.6</option></datalist></label>
+      <label>Hosting-Region<input id="hosting-region" value="Global"></label>
+      <label>Input-Preis / Mio. Token<input id="input-cost" type="number" min="0" step="0.0001" value="1"></label>
+      <label>Output-Preis / Mio. Token<input id="output-cost" type="number" min="0" step="0.0001" value="5"></label>
+      <label>Kontextfenster<input id="context-window" type="number" min="1" value="200000"></label>
+      <label>Timeout (Sek.)<input id="timeout" type="number" min="1" max="120" value="30"></label>
+      <label class="wide">Benutzerdefinierte Header (JSON)<textarea id="headers">{}</textarea></label>
+      <span class="wide eyebrow">Erweitert: EcoLogits (optional)</span>
+      <label class="wide">EcoLogits-Anbieter<select id="eco-provider"><option value="">Nicht gesetzt (manuelle Schätzung)</option><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option><option value="cohere">Cohere</option><option value="google_genai">Google GenAI</option><option value="huggingface_hub">Hugging Face Hub</option><option value="mistralai">Mistral AI</option></select><small>Nur setzen, wenn der Endpunkt nachweislich das echte Modell dieses Anbieters ist.</small></label>
+      <label>Aktive Parameter (Mrd.)<input id="eco-active-params" type="number" min="0" step="0.1"></label>
+      <label>Gesamtparameter (Mrd.)<input id="eco-total-params" type="number" min="0" step="0.1"></label>
+      <label>Rechenzentrum PUE<input id="eco-pue" type="number" min="1" step="0.01"></label>
+      <label>Rechenzentrum WUE<input id="eco-wue" type="number" min="0" step="0.01"></label>
+      <label>Strommix-Zone (ISO 3166-1 alpha-3)<input id="eco-zone" maxlength="3" placeholder="z. B. DEU"></label>
+    </div>
+    <div class="inline-checks">
+      <label class="check"><input id="is-eu" type="checkbox"> EU-gehostet</label>
+      <label class="check"><input id="enabled" type="checkbox" checked> Aktiviert</label>
+    </div>
+    <div class="actions"><button class="primary" type="submit">Speichern</button><button id="cancel" type="button">Abbrechen</button></div>
+  </form>
+  <section class="panel">
+    <h2>Konfigurierte Provider</h2>
+    <p>Ein Anthropic-Provider und ein API-Key reichen für Claude Haiku und Claude Sonnet. Das endgültige Modell wird nach der Prompt-Analyse im Dashboard gewählt.</p>
+    <div id="provider-list"></div>
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static',filename='js/providers.js',v='2') }}" defer></script><script src="{{ url_for('static',filename='js/anthropic_presets.js',v='3') }}" defer></script>{% endblock %}

@@ -55,7 +55,7 @@ def test_analyze_falls_back_when_ecologits_disabled(app,client,csrf):
 
 def test_electricity_cost_shown_for_local_recommendation(client, csrf):
     with patch("app.routes.api.analyze_with_ollama", return_value=(ANALYSIS_STUB, None)):
-        response = client.post("/api/analyze", json={"prompt": "Hallo Welt"}, headers={"X-CSRF-Token": csrf})
+        response = client.post("/api/analyze", json={"prompt": "Hallo Welt", "mode": "local"}, headers={"X-CSRF-Token": csrf})
     data = response.get_json()
     assert data["recommendation"]["hosting_region"] == "Lokal"
     assert data["sustainability"]["electricity_cost_eur"] is not None
@@ -66,6 +66,180 @@ def test_electricity_cost_hidden_for_cloud_recommendation(client, csrf):
     data = response.get_json()
     assert data["recommendation"]["hosting_region"] != "Lokal"
     assert data["sustainability"]["electricity_cost_eur"] is None
+
+
+def test_simple_prompt_recommends_claude_haiku(client, csrf):
+    analysis = {**ANALYSIS_STUB, "recommended_model_class": "cloud_small"}
+    with patch("app.routes.api.analyze_with_ollama", return_value=(analysis, None)):
+        response = client.post(
+            "/api/analyze",
+            json={"prompt": "Fasse diesen kurzen Satz zusammen."},
+            headers={"X-CSRF-Token": csrf},
+        )
+    data = response.get_json()
+    assert data["recommendation"]["model_id"] == "claude-haiku-4-5-20251001"
+    assert data["recommendation"]["input_cost"] == 1
+    assert data["recommendation"]["output_cost"] == 5
+
+
+def test_complex_prompt_recommends_claude_sonnet(client, csrf):
+    analysis = {
+        **ANALYSIS_STUB,
+        "complexity_score": 90,
+        "recommended_model_class": "cloud_large",
+    }
+    with patch("app.routes.api.analyze_with_ollama", return_value=(analysis, None)):
+        response = client.post(
+            "/api/analyze",
+            json={"prompt": "Analysiere eine komplexe Softwarearchitektur."},
+            headers={"X-CSRF-Token": csrf},
+        )
+    data = response.get_json()
+    assert data["recommendation"]["model_id"] == "claude-sonnet-4-6"
+    assert data["recommendation"]["input_cost"] == 3
+    assert data["recommendation"]["output_cost"] == 15
+
+
+def test_one_anthropic_provider_can_send_with_both_models(app, client, csrf):
+    key = Fernet.generate_key().decode()
+    app.config["APP_ENCRYPTION_KEY"] = key
+    with app.app_context():
+        encrypted = EncryptionService(key).encrypt("sk-ant-test")
+        db.session.add(
+            ProviderConfiguration(
+                name="Anthropic",
+                provider_type="anthropic",
+                base_url="https://api.anthropic.com",
+                encrypted_api_key=encrypted,
+                model_name="claude-haiku-4-5-20251001",
+                enabled=True,
+            )
+        )
+        db.session.commit()
+
+    with patch(
+        "app.routes.api.AnthropicProvider.generate_messages",
+        return_value=("Antwort", {"input_tokens": 120, "output_tokens": 40}),
+    ) as generate:
+        response = client.post(
+            "/api/send",
+            json={
+                "prompt": "Komplexe Aufgabe",
+                "provider_id": 1,
+                "model_name": "claude-sonnet-4-6",
+            },
+            headers={"X-CSRF-Token": csrf},
+        )
+
+    assert response.status_code == 200
+    generate.assert_called_once_with(
+        [{"role": "user", "content": "Komplexe Aufgabe"}],
+        "claude-sonnet-4-6",
+    )
+    assert response.get_json()["cost_currency"] == "USD"
+    assert response.get_json()["model_used"] == "claude-sonnet-4-6"
+    assert response.get_json()["input_tokens"] == 120
+    assert response.get_json()["output_tokens"] == 40
+
+
+def test_anthropic_follow_up_sends_complete_chat(app, client, csrf):
+    key = Fernet.generate_key().decode()
+    app.config["APP_ENCRYPTION_KEY"] = key
+    with app.app_context():
+        db.session.add(
+            ProviderConfiguration(
+                name="Anthropic",
+                provider_type="anthropic",
+                base_url="https://api.anthropic.com",
+                encrypted_api_key=EncryptionService(key).encrypt("sk-ant-test"),
+                model_name="claude-haiku-4-5-20251001",
+                enabled=True,
+            )
+        )
+        db.session.commit()
+    messages = [
+        {"role": "user", "content": "Hallo"},
+        {"role": "assistant", "content": "Guten Tag"},
+        {"role": "user", "content": "Wie geht es weiter?"},
+    ]
+    with patch(
+        "app.routes.api.AnthropicProvider.generate_messages",
+        return_value=("So geht es weiter.", {"input_tokens": 50, "output_tokens": 20}),
+    ) as generate:
+        response = client.post(
+            "/api/send",
+            json={
+                "prompt": "Wie geht es weiter?",
+                "messages": messages,
+                "provider_id": 1,
+                "model_name": "claude-haiku-4-5-20251001",
+            },
+            headers={"X-CSRF-Token": csrf},
+        )
+    assert response.status_code == 200
+    generate.assert_called_once_with(messages, "claude-haiku-4-5-20251001")
+    data = response.get_json()
+    assert data["actual_cost"] == 0.00015
+    assert data["input_cost"] == 0.00005
+    assert data["output_cost"] == 0.0001
+
+
+def test_chat_may_exceed_single_prompt_limit(app, client, csrf):
+    key = Fernet.generate_key().decode()
+    app.config["APP_ENCRYPTION_KEY"] = key
+    with app.app_context():
+        db.session.add(
+            ProviderConfiguration(
+                name="Anthropic",
+                provider_type="anthropic",
+                base_url="https://api.anthropic.com",
+                encrypted_api_key=EncryptionService(key).encrypt("sk-ant-test"),
+                model_name="claude-haiku-4-5-20251001",
+                enabled=True,
+            )
+        )
+        db.session.commit()
+    messages = [
+        {"role": "user", "content": "Erste Frage"},
+        {"role": "assistant", "content": "A" * 1500},
+        {"role": "user", "content": "Folgefrage"},
+    ]
+    with patch(
+        "app.routes.api.AnthropicProvider.generate_messages",
+        return_value=("Antwort", {"input_tokens": 400, "output_tokens": 10}),
+    ):
+        response = client.post(
+            "/api/send",
+            json={
+                "prompt": "Folgefrage",
+                "messages": messages,
+                "provider_id": 1,
+                "model_name": "claude-haiku-4-5-20251001",
+            },
+            headers={"X-CSRF-Token": csrf},
+        )
+    assert response.status_code == 200
+
+
+def test_anthropic_rejects_unknown_model(app, client, csrf):
+    with app.app_context():
+        db.session.add(
+            ProviderConfiguration(
+                name="Anthropic",
+                provider_type="anthropic",
+                base_url="https://api.anthropic.com",
+                model_name="claude-haiku-4-5-20251001",
+                enabled=True,
+            )
+        )
+        db.session.commit()
+
+    response = client.post(
+        "/api/send",
+        json={"prompt": "Hallo", "provider_id": 1, "model_name": "anderes-modell"},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert response.status_code == 400
 
 def test_analyze_returns_optimized_comparison_when_prompt_differs(client, csrf):
     analysis = {**ANALYSIS_STUB, "optimized_prompt": "Kurz."}

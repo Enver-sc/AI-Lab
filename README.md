@@ -63,7 +63,9 @@ Dashboard: <http://127.0.0.1:5000>, Provider: `/settings/providers`.
 
 ## Provider und Sicherheit
 
-Unterstützt werden Ollama und generische OpenAI-kompatible APIs (`/models`, `/chat/completions`). Private, Loopback-, Link-local- und reservierte externe Ziele werden nach DNS-Auflösung blockiert; Redirects sind deaktiviert. Localhost ist nur für `ollama` erlaubt. Schlüssel liegen Fernet-verschlüsselt in SQLite und erscheinen in API/HTML nur maskiert. EU-Hosting ist vom Betreiber vertraglich zu verifizieren.
+Unterstützt werden Ollama, die native Anthropic Messages API und generische OpenAI-kompatible APIs (`/models`, `/chat/completions`). Claude Haiku 4.5 (`claude-haiku-4-5-20251001`, 1 USD Input/5 USD Output je Mio. Token) ist für einfache Anfragen hinterlegt; Claude Sonnet 4.6 (`claude-sonnet-4-6`, 3 USD/15 USD) für komplexe Aufgaben. Cache- und Batchpreise werden nicht verwendet. Private, Loopback-, Link-local- und reservierte externe Ziele werden nach DNS-Auflösung blockiert; Redirects sind deaktiviert. Localhost ist nur für `ollama` erlaubt. Schlüssel liegen Fernet-verschlüsselt in SQLite und erscheinen in API/HTML nur maskiert. EU-Hosting ist vom Betreiber vertraglich zu verifizieren.
+
+Den Anthropic API-Key einmal unter `/settings/providers` eintragen. Dazu einen Provider vom Typ `Anthropic Claude` mit Base-URL `https://api.anthropic.com` anlegen. Nach der lokalen Prompt-Analyse empfiehlt das Dashboard Haiku oder Sonnet; der Nutzer kann direkt vor dem Versand trotzdem eines der beiden Modelle auswählen. Nach der ersten API-Antwort kann der Chat im Dashboard fortgesetzt werden. Der Verlauf bleibt im Browser und wird für Folgefragen als Kontext übertragen; pro Runde zeigt das Dashboard die von Anthropic gemeldeten Input-/Output-Tokens, deren Kosten, Gesamtkosten und kumulierte Umweltwerte.
 
 Prompts werden standardmäßig nicht gespeichert. `ENABLE_PROMPT_LOGGING=true` speichert nur SHA-256-Hash, Token-/Modell-/Schätzmetadaten und Status. CSRF-Schutz, Größenlimits, sichere Cookie-Vorgaben, CSP und Eingabevalidierung sind aktiv. Verändernde API-Aufrufe benötigen den Sessionwert als `X-CSRF-Token`.
 
