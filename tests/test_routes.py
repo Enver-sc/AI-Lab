@@ -284,3 +284,115 @@ def test_send_co2_zero_when_ecologits_unavailable(app, client, csrf):
     with app.app_context():
         log = UsageLog.query.first()
         assert log.estimated_co2_grams == 0
+
+
+RED_CONTENT = "password=verysecret sk-abcdefghijklmnop Bearer abcdefghijklmnopqrst -----BEGIN PRIVATE KEY-----"
+
+
+def add_anthropic_provider(app):
+    key = Fernet.generate_key().decode()
+    app.config["APP_ENCRYPTION_KEY"] = key
+    with app.app_context():
+        db.session.add(
+            ProviderConfiguration(
+                name="Anthropic",
+                provider_type="anthropic",
+                base_url="https://api.anthropic.com",
+                encrypted_api_key=EncryptionService(key).encrypt("sk-ant-test"),
+                model_name="claude-haiku-4-5-20251001",
+                enabled=True,
+            )
+        )
+        db.session.commit()
+
+
+def test_sensitive_history_blocks_send_despite_harmless_prompt(app, client, csrf):
+    # Bypass-Fall aus dem Review: sensible Daten im mitgeschickten Verlauf,
+    # harmlose Schlussnachricht — muss jetzt erkannt und blockiert werden.
+    add_anthropic_provider(app)
+    messages = [
+        {"role": "user", "content": RED_CONTENT},
+        {"role": "assistant", "content": "Verstanden."},
+        {"role": "user", "content": "Fasse das bitte zusammen."},
+    ]
+    body = {
+        "prompt": "Fasse das bitte zusammen.",
+        "messages": messages,
+        "provider_id": 1,
+        "model_name": "claude-haiku-4-5-20251001",
+    }
+    with patch(
+        "app.routes.api.AnthropicProvider.generate_messages",
+        return_value=("Antwort", {"input_tokens": 10, "output_tokens": 5}),
+    ) as generate:
+        blocked = client.post("/api/send", json=body, headers={"X-CSRF-Token": csrf})
+        assert blocked.status_code == 403
+        generate.assert_not_called()
+        allowed = client.post(
+            "/api/send",
+            json={**body, "override_reason": "Bewusst freigegeben für einen dokumentierten Testfall."},
+            headers={"X-CSRF-Token": csrf},
+        )
+    assert allowed.status_code == 200
+    generate.assert_called_once()
+
+
+def test_red_follow_up_message_requires_fresh_override(app, client, csrf):
+    add_anthropic_provider(app)
+    messages = [
+        {"role": "user", "content": "Hallo"},
+        {"role": "assistant", "content": "Guten Tag"},
+        {"role": "user", "content": RED_CONTENT},
+    ]
+    with patch("app.routes.api.AnthropicProvider.generate_messages") as generate:
+        response = client.post(
+            "/api/send",
+            json={
+                "prompt": RED_CONTENT,
+                "messages": messages,
+                "provider_id": 1,
+                "model_name": "claude-haiku-4-5-20251001",
+            },
+            headers={"X-CSRF-Token": csrf},
+        )
+    assert response.status_code == 403
+    generate.assert_not_called()
+
+
+def test_compliance_check_green_for_harmless_prompt(client, csrf):
+    response = client.post(
+        "/api/compliance/check",
+        json={"prompt": "Wie ist das Wetter heute?"},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["level"] == "green"
+    assert data["findings"] == []
+
+
+def test_compliance_check_flags_worst_history_message(client, csrf):
+    messages = [
+        {"role": "user", "content": "Diagnose für einen Patienten bitte an max@example.com senden"},
+        {"role": "assistant", "content": "Okay."},
+        {"role": "user", "content": "Danke dir!"},
+    ]
+    response = client.post(
+        "/api/compliance/check",
+        json={"prompt": "Danke dir!", "messages": messages},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["level"] == "yellow"
+    assert "Gesundheitsdaten" in data["findings"]
+    assert "E-Mail-Adresse" in data["findings"]
+
+
+def test_compliance_check_rejects_invalid_history(client, csrf):
+    response = client.post(
+        "/api/compliance/check",
+        json={"prompt": "Hallo", "messages": [{"role": "system", "content": "x"}]},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert response.status_code == 400

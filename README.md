@@ -13,7 +13,7 @@ Lokales Flask-MVP zur Vorabanalyse von Prompts. Ollama liefert möglichst eine s
 - `app/models.py`: Provider und optionale, promptfreie Nutzungslogs
 - `tests`: Unit- und Routentests mit gemockten externen Aufrufen
 
-Analyse und Versand sind technisch getrennt. `/api/analyze` ruft keinen externen Provider auf. Versand verlangt eine bewusste Bestätigung im UI und wird bei roter Compliance ohne Begründung serverseitig blockiert.
+Analyse und Versand sind technisch getrennt. `/api/analyze` ruft keinen externen Provider auf. Versand verlangt eine bewusste Bestätigung im UI und wird bei roter Compliance ohne Begründung serverseitig blockiert. Bei Chat-Anfragen prüft der Server jede Nachricht des mitgeschickten Verlaufs; das Gesamtergebnis richtet sich nach der schlechtesten Nachricht, und jede rote Nachricht braucht eine eigene, frische Begründung — auch Folgenachrichten im Chat durchlaufen im UI die bewusste Bestätigung.
 
 ## Installation
 
@@ -71,7 +71,7 @@ Prompts werden standardmäßig nicht gespeichert. `ENABLE_PROMPT_LOGGING=true` s
 
 ## API
 
-HTML: `GET /`, `/settings/providers`, `/privacy`. JSON: `POST /api/analyze`, `/api/optimize`, `/api/send`; Provider-CRUD samt Test/Modellen; Ollama-Status/Modelle und `/api/usage/summary`. `/api/analyze` liefert bei abweichendem Optimierungsvorschlag zusätzlich `optimized` (dieselben Kennzahlen für den optimierten Prompt); `/api/send` liefert die real gemessene `sustainability`. Vor dem Aufruf des lokalen Analyse-/Optimierungsmodells maskieren `/api/analyze` und `/api/optimize` erkannte sensible Werte (z. B. IBAN, Kreditkartennummer) per `redact_sensitive`; Compliance-Prüfung und Trefferanzeige arbeiten weiter auf dem Original, und das `warning`-Feld weist auf die Maskierung hin. Platzhalter bleiben im optimierten Prompt sichtbar und werden nicht zurückgetauscht.
+HTML: `GET /`, `/settings/providers`, `/privacy`. JSON: `POST /api/analyze`, `/api/optimize`, `/api/send`, `/api/compliance/check` (Stufe-1-Vorabprüfung von Nachricht plus Chatverlauf, genutzt von der Mini-Ampel im Chat); Provider-CRUD samt Test/Modellen; Ollama-Status/Modelle und `/api/usage/summary`. `/api/analyze` liefert bei abweichendem Optimierungsvorschlag zusätzlich `optimized` (dieselben Kennzahlen für den optimierten Prompt); `/api/send` liefert die real gemessene `sustainability`. Vor dem Aufruf des lokalen Analyse-/Optimierungsmodells maskieren `/api/analyze` und `/api/optimize` erkannte sensible Werte (z. B. IBAN, Kreditkartennummer) per `redact_sensitive`; Compliance-Prüfung und Trefferanzeige arbeiten weiter auf dem Original, und das `warning`-Feld weist auf die Maskierung hin. Platzhalter bleiben im optimierten Prompt sichtbar und werden nicht zurückgetauscht.
 
 ## Einschränkungen
 

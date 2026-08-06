@@ -4,7 +4,7 @@ from sqlalchemy import func
 from ..extensions import db
 from ..models import ProviderConfiguration, UsageLog
 from ..services.analysis_service import analyze_with_ollama, parse_analysis
-from ..services.compliance_service import inspect_prompt, redact_sensitive
+from ..services.compliance_service import inspect_chat_history, inspect_prompt, redact_sensitive
 from ..services.cost_service import estimate_cost, estimate_electricity_cost
 from ..services.ecologits_service import compute_impacts
 from ..services.encryption_service import EncryptionService, EncryptionUnavailable, mask_secret
@@ -43,10 +43,11 @@ def prompt_from_body():
     return data, prompt.strip()
 
 
-def chat_messages_from_body(data: dict, prompt: str) -> list[dict[str, str]]:
+def chat_messages_from_body(data: dict, prompt: str) -> tuple[list[dict[str, str]], dict]:
     messages = data.get("messages")
     if messages is None:
-        return [{"role": "user", "content": prompt}]
+        single = [{"role": "user", "content": prompt}]
+        return single, inspect_chat_history(single)
     if not isinstance(messages, list) or not messages:
         raise ValueError("Der Chatverlauf ist ungültig.")
     cleaned = []
@@ -70,7 +71,7 @@ def chat_messages_from_body(data: dict, prompt: str) -> list[dict[str, str]]:
     max_chat_length = current_app.config["MAX_CONTENT_LENGTH"] // 2
     if total_length > max_chat_length:
         raise ValueError("Der Chatverlauf ist für eine einzelne Anfrage zu groß.")
-    return cleaned
+    return cleaned, inspect_chat_history(cleaned)
 def serialize_provider(p):
     masked = ""
     if p.encrypted_api_key:
@@ -154,6 +155,18 @@ def optimize():
     try: _, prompt=prompt_from_body(); result=analysis_payload(prompt); return jsonify(optimized_prompt=result["analysis"]["optimized_prompt"], suggestions=result["analysis"]["optimization_suggestions"], warning=result["warning"])
     except ValueError as exc: return error(str(exc))
 
+
+@api_bp.post("/compliance/check")
+def compliance_check():
+    # Vorabprüfung für die Mini-Ampel im Chat: bewertet Nachricht plus Verlauf mit
+    # exakt derselben Logik wie /api/send, damit UI und Server nie auseinanderlaufen.
+    try:
+        data, prompt = prompt_from_body()
+        _, compliance = chat_messages_from_body(data, prompt)
+    except ValueError as exc:
+        return error(str(exc))
+    return jsonify(compliance)
+
 def provider_instance(config):
     if config.provider_type == "ollama": return OllamaProvider(config.base_url, config.model_name, config.timeout_seconds)
     key = EncryptionService(current_app.config["APP_ENCRYPTION_KEY"]).decrypt(config.encrypted_api_key)
@@ -165,10 +178,10 @@ def send():
     try: data,prompt=prompt_from_body()
     except ValueError as exc: return error(str(exc))
     try:
-        messages = chat_messages_from_body(data, prompt)
+        messages, compliance = chat_messages_from_body(data, prompt)
     except ValueError as exc:
         return error(str(exc))
-    compliance=inspect_prompt(prompt); override=(data.get("override_reason") or "").strip()
+    override = (data.get("override_reason") or "").strip()
     if compliance["level"]=="red" and len(override)<10: return error("Rote Compliance-Bewertung blockiert den Versand. Eine begründete manuelle Freigabe ist erforderlich.",403)
     provider=ProviderConfiguration.query.filter_by(id=data.get("provider_id"),enabled=True).first()
     if not provider: return error("Aktiver Provider nicht gefunden.",404)

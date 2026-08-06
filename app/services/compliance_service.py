@@ -132,6 +132,13 @@ def inspect_prompt(text):
     score = max(0, 100 - min(100, penalty))
     return {"score": score, "level": "green" if score >= 80 else "yellow" if score >= 50 else "red", "findings": findings, "contains_personal_data": any(x in findings for x in ("E-Mail-Adresse", "Telefonnummer", "IBAN", "Kreditkartennummer", "Deutsche Steuer-ID", "Gesundheitsdaten")), "contains_confidential_data": any(x in findings for x in ("API-Schlüssel", "Bearer-Token", "Privater Schlüssel", "Passwort", "Vertrauliche Informationen", "Geheimnis im Klartext"))}
 
+def inspect_chat_history(messages: list[dict]) -> dict:
+    # Gesamtergebnis = schlechteste Nachricht des Verlaufs: sonst ließe sich die
+    # Prüfung über einen präparierten Verlauf mit harmloser Schlussnachricht umgehen.
+    results = [inspect_prompt(message["content"]) for message in messages]
+    return min(results, key=lambda result: result["score"])
+
+
 def redact_sensitive(text):
     def masked(match):
         value = match.group(0)
