@@ -216,6 +216,18 @@
       var findings = document.createElement("small");
       findings.textContent = "Treffer: " + (check.findings.join(", ") || "keine lokalen Treffer");
       box.appendChild(findings);
+      (check.semantic_findings || []).forEach(function (finding) {
+        var line = document.createElement("small");
+        line.style.display = "block";
+        line.textContent = finding.label + ": " + finding.reason;
+        box.appendChild(line);
+      });
+      if (check.semantic_warning) {
+        var note = document.createElement("small");
+        note.style.display = "block";
+        note.textContent = check.semantic_warning;
+        box.appendChild(note);
+      }
       if (check.level === "green") {
         sendChatMessage(content, "");
         return;
@@ -392,7 +404,13 @@
       element("#duration").textContent = data.duration.min_seconds + "–" + data.duration.max_seconds + " s";
       element("#compliance").textContent = data.compliance.score + "/100";
       element("#compliance").className = data.compliance.level;
-      element("#compliance-findings").textContent = data.compliance.findings.join(", ") || "Keine lokalen Treffer";
+      var findingsText = data.compliance.findings.join(", ") || "Keine lokalen Treffer";
+      var semantic = data.compliance.semantic_findings || [];
+      if (semantic.length) {
+        findingsText += " · " + semantic.map(function (finding) { return finding.label + ": " + finding.reason; }).join(" · ");
+      }
+      if (data.compliance.semantic_warning) findingsText += " · " + data.compliance.semantic_warning;
+      element("#compliance-findings").textContent = findingsText;
       element("#model").textContent = data.recommendation.display_name;
       element("#reason").textContent = data.recommendation.reason;
       element("#region").textContent = data.recommendation.hosting_region;

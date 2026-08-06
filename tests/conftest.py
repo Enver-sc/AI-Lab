@@ -10,6 +10,9 @@ class TestConfig:
     OLLAMA_MODEL="test"
     OLLAMA_TIMEOUT_SECONDS=.1
     OLLAMA_ANALYSIS_TIMEOUT_SECONDS=.1
+    # Stufe 2 in Tests standardmäßig aus: keine echten Netzwerkaufrufe;
+    # Guardian-Tests setzen ein Modell und mocken den Ollama-Aufruf.
+    OLLAMA_GUARDIAN_MODEL=""
     APP_ENCRYPTION_KEY=""
     ENABLE_PROMPT_LOGGING=False
     MAX_PROMPT_LENGTH=1000

@@ -8,6 +8,7 @@ from ..services.compliance_service import inspect_chat_history, inspect_prompt, 
 from ..services.cost_service import estimate_cost, estimate_electricity_cost
 from ..services.ecologits_service import compute_impacts
 from ..services.encryption_service import EncryptionService, EncryptionUnavailable, mask_secret
+from ..services.guardian_service import apply_semantic_check
 from ..services.ollama_service import OllamaError, OllamaService
 from ..services.recommendation_service import recommend
 from ..services.sustainability_service import estimate_duration, estimate_sustainability
@@ -43,11 +44,18 @@ def prompt_from_body():
     return data, prompt.strip()
 
 
+def chat_compliance(messages: list[dict[str, str]]) -> dict:
+    # Stufe 1 (deterministisch, Nachricht für Nachricht) plus Stufe 2 (semantisch,
+    # über den gesamten Verlauf) -- gilt für /api/send und /api/compliance/check.
+    transcript = "\n".join(message["content"] for message in messages)
+    return apply_semantic_check(inspect_chat_history(messages), transcript, current_app.config)
+
+
 def chat_messages_from_body(data: dict, prompt: str) -> tuple[list[dict[str, str]], dict]:
     messages = data.get("messages")
     if messages is None:
         single = [{"role": "user", "content": prompt}]
-        return single, inspect_chat_history(single)
+        return single, chat_compliance(single)
     if not isinstance(messages, list) or not messages:
         raise ValueError("Der Chatverlauf ist ungültig.")
     cleaned = []
@@ -71,7 +79,7 @@ def chat_messages_from_body(data: dict, prompt: str) -> tuple[list[dict[str, str
     max_chat_length = current_app.config["MAX_CONTENT_LENGTH"] // 2
     if total_length > max_chat_length:
         raise ValueError("Der Chatverlauf ist für eine einzelne Anfrage zu groß.")
-    return cleaned, inspect_chat_history(cleaned)
+    return cleaned, chat_compliance(cleaned)
 def serialize_provider(p):
     masked = ""
     if p.encrypted_api_key:
@@ -129,7 +137,7 @@ def analysis_payload(prompt, mode="auto"):
     )
     try: analysis, warning = analyze_with_ollama(prompt, service)
     except OllamaError as exc: analysis, warning = parse_analysis(None, prompt); warning = f"{exc} Sichere Standardanalyse wird verwendet."
-    compliance = inspect_prompt(prompt)
+    compliance = apply_semantic_check(inspect_prompt(prompt), prompt, current_app.config)
     analysis["contains_personal_data"] |= compliance["contains_personal_data"]
     analysis["contains_confidential_data"] |= compliance["contains_confidential_data"]
     analysis["compliance_score"] = min(analysis["compliance_score"], compliance["score"])

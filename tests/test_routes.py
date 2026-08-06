@@ -3,6 +3,7 @@ from cryptography.fernet import Fernet
 from app.extensions import db
 from app.models import ProviderConfiguration, UsageLog
 from app.services.encryption_service import EncryptionService
+from app.services.ollama_service import OllamaError
 
 ANALYSIS_STUB = {"prompt_category":"x","complexity_score":1,"sensitivity_score":1,"compliance_score":100,"contains_personal_data":False,"contains_confidential_data":False,"copyright_risk":"low","recommended_model_class":"local_small","optimization_suggestions":[],"optimized_prompt":"x","short_reasoning":"x"}
 
@@ -396,3 +397,75 @@ def test_compliance_check_rejects_invalid_history(client, csrf):
         headers={"X-CSRF-Token": csrf},
     )
     assert response.status_code == 400
+
+
+GUARDIAN_RISK_JSON = '{"risk": true, "categories": ["health_data", "personal_data"], "reason": "Krankmeldung einer identifizierbaren Person."}'
+SEMANTIC_ONLY_PROMPT = "Person A aus Abteilung X ist heute krank"
+
+
+def test_guardian_raises_semantic_case_to_yellow(app, client, csrf):
+    # Bekannte Stufe-1-Grenze: keine prüfbaren Muster, aber identifizierbare
+    # Person plus Gesundheitsbezug -- Stufe 2 muss auf Gelb heben.
+    app.config["OLLAMA_GUARDIAN_MODEL"] = "guardian-test"
+    with patch("app.services.guardian_service.OllamaService.generate", return_value=GUARDIAN_RISK_JSON):
+        response = client.post(
+            "/api/compliance/check",
+            json={"prompt": SEMANTIC_ONLY_PROMPT},
+            headers={"X-CSRF-Token": csrf},
+        )
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["findings"] == []
+    assert data["level"] == "yellow"
+    assert data["score"] <= 79
+    labels = [finding["label"] for finding in data["semantic_findings"]]
+    assert "Gesundheitsdaten (Stufe 2)" in labels
+    assert all(finding["reason"] for finding in data["semantic_findings"])
+
+
+def test_guardian_unreachable_falls_back_to_stufe1(app, client, csrf):
+    app.config["OLLAMA_GUARDIAN_MODEL"] = "guardian-test"
+    with patch("app.services.guardian_service.OllamaService.generate", side_effect=OllamaError("down")):
+        response = client.post(
+            "/api/compliance/check",
+            json={"prompt": SEMANTIC_ONLY_PROMPT},
+            headers={"X-CSRF-Token": csrf},
+        )
+    data = response.get_json()
+    assert data["level"] == "green"
+    assert "Stufe-2" in data["semantic_warning"]
+
+
+def test_guardian_yellow_does_not_block_send(app, client, csrf):
+    add_anthropic_provider(app)
+    app.config["OLLAMA_GUARDIAN_MODEL"] = "guardian-test"
+    with patch("app.services.guardian_service.OllamaService.generate", return_value=GUARDIAN_RISK_JSON), patch(
+        "app.routes.api.AnthropicProvider.generate_messages",
+        return_value=("Gute Besserung!", {"input_tokens": 10, "output_tokens": 5}),
+    ):
+        response = client.post(
+            "/api/send",
+            json={
+                "prompt": SEMANTIC_ONLY_PROMPT,
+                "provider_id": 1,
+                "model_name": "claude-haiku-4-5-20251001",
+            },
+            headers={"X-CSRF-Token": csrf},
+        )
+    assert response.status_code == 200
+
+
+def test_guardian_runs_during_analysis(app, client, csrf):
+    app.config["OLLAMA_GUARDIAN_MODEL"] = "guardian-test"
+    with patch("app.routes.api.analyze_with_ollama", return_value=(ANALYSIS_STUB, None)), patch(
+        "app.services.guardian_service.OllamaService.generate", return_value=GUARDIAN_RISK_JSON
+    ):
+        response = client.post(
+            "/api/analyze",
+            json={"prompt": SEMANTIC_ONLY_PROMPT},
+            headers={"X-CSRF-Token": csrf},
+        )
+    data = response.get_json()
+    assert data["compliance"]["level"] == "yellow"
+    assert data["compliance"]["semantic_findings"]
+    assert data["analysis"]["contains_personal_data"] is True
