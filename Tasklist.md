@@ -427,3 +427,59 @@ aus dem Fund oben. Mögliche spätere Ansatzpunkte, falls gewünscht:
 Schwelle in `recommend()` senken (z. B. 50 statt 60), und/oder den
 gemergten `compliance_score` statt des reinen Regex-Werts in der
 Dashboard-Kachel anzeigen.
+
+### Finding (nur dokumentiert, im Team zu besprechen): Guardian-Stufe-2 macht Analyse und externen Versand spürbar langsam, meldet fälschlich "nicht erreichbar"
+
+**Symptom** (nach lokalem Pull von `granite4.1-guardian:8b` und Regressionstests
+gegen die frisch gemergte Compliance-Stufe-2-PR):
+
+- Die Promptanalyse dauert wesentlich länger als vorher, mit durchgängig
+  ~50 % CPU-Last und ~8 GB RAM-Nutzung durch Ollama.
+- Auch das Absenden eines Folgeprompts an einen **externen** Provider
+  (z. B. Anthropic) dauert jetzt sehr viel länger.
+- Unabhängig davon erscheint teils der Hinweis "Stufe-2-Prüfung nicht
+  verfügbar (Guardian-Modell nicht erreichbar); die Bewertung basiert nur
+  auf Stufe 1.", obwohl das Guardian-Modell in Ollama nachweislich
+  vorhanden ist.
+
+**Root-Cause-Analyse (im Code nachvollzogen, ein gemeinsamer Grund für
+alle drei Effekte)**:
+
+Laut README läuft Stufe 2 (Guardian) sowohl bei `/api/analyze` **als
+auch** bei `/api/send` mit — auch wenn der eigentliche Versand an einen
+externen Anbieter geht. Beim Senden wird also erst lokal der
+Guardian-Check abgewartet, bevor überhaupt die externe Anfrage (z. B. an
+Anthropic) losgeschickt wird — das erklärt die Verzögerung auch beim
+externen Versand, nicht Anthropic selbst ist langsamer.
+
+`apply_semantic_check()` (`app/services/guardian_service.py`) verwendet
+für den Guardian-`OllamaService`-Aufruf `OLLAMA_TIMEOUT_SECONDS` (Default
+`60`) — **nicht** das für den normalen Analyse-Call bewusst unlimitierte
+`OLLAMA_ANALYSIS_TIMEOUT_SECONDS`. Auf CPU-only-Hardware ohne GPU (siehe
+bereits beim EcoLogits-Thema festgestellt: Ryzen 7 8840U, keine dedizierte
+GPU) kann ein 8B-Modell für eine einzelne Inferenz durchaus länger als
+60 Sekunden brauchen — die beobachtete CPU-/RAM-Last ist echte laufende
+Berechnung, kein Hänger. `check_text()` fängt `OllamaError` pauschal ab
+(worunter auch `requests.Timeout` fällt) und zeigt dafür denselben Text
+wie bei einem echten Verbindungsfehler — "nicht erreichbar" ist in diesem
+Fall technisch irreführend, das Modell existiert, antwortet nur nicht
+innerhalb der Zeitgrenze.
+
+**Klargestellt, damit es nicht missverstanden wird**: `OLLAMA_GUARDIAN_MODEL`
+ist eine globale `.env`/`config.py`-Einstellung (Default bereits
+`granite4.1-guardian:8b`, auch ohne eigenen `.env`-Eintrag aktiv) — **keine**
+Einstellung im Dashboard unter Provider-Konfiguration; die beiden Systeme
+sind unabhängig voneinander.
+
+**Status**: Nur als Fund dokumentiert, keine Code-Änderung vorgenommen —
+Guardian ist die Arbeit eines Kollegen, das braucht Team-Abstimmung.
+Mögliche Ansatzpunkte für die Diskussion:
+- Eigener, großzügigerer Timeout für den Guardian-Call statt der
+  gemeinsamen `OLLAMA_TIMEOUT_SECONDS` (analog zur bestehenden Trennung
+  bei `OLLAMA_ANALYSIS_TIMEOUT_SECONDS`).
+- Ein kleineres/schnelleres Guardian-Modell zumindest für lokale
+  Entwicklung ohne GPU.
+- `OLLAMA_GUARDIAN_MODEL` in der lokalen `.env` leer lassen, um Stufe 2
+  bei Bedarf individuell zu deaktivieren, ohne Code zu ändern.
+- Ehrlichere Fehlermeldung, die zwischen echtem Verbindungsfehler und
+  Timeout unterscheidet.

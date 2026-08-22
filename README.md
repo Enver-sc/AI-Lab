@@ -2,7 +2,7 @@
 
 Eine ausführliche Erklärung mit Architektur-, Ablauf-, Compliance-, Datenbank- und Sicherheitsdiagrammen befindet sich in der [technischen Dokumentation](docs/TECHNISCHE_DOKUMENTATION.md).
 
-Lokales Flask-MVP zur Vorabanalyse von Prompts. Ollama liefert möglichst eine strukturierte lokale Analyse; lokale Regeln ergänzen Compliance-Funde, Token-, Kosten-, Energie-, CO₂- und Dauer-Schätzungen sowie eine nachvollziehbare Modellempfehlung. Energie/CO₂/Wasser/Ressourcenverbrauch werden, wo konfiguriert, über [EcoLogits](docs/ECOLOGITS_INTEGRATION.md) berechnet; ohne passende Konfiguration greift eine einfache Fallback-Formel. Eine geplante Neukonzeption (CodeCarbon-Integration, überarbeitete Kennzahlen) ist in [`CARBON_FOOTPRINT_REDESIGN.md`](docs/CARBON_FOOTPRINT_REDESIGN.md) dokumentiert.
+Lokales Flask-MVP zur Vorabanalyse von Prompts. Ollama liefert möglichst eine strukturierte lokale Analyse; lokale Regeln ergänzen Compliance-Funde, Token-, Kosten-, Energie-, CO₂- und Dauer-Schätzungen sowie eine nachvollziehbare Modellempfehlung. Energie/CO₂/Wasser/Ressourcenverbrauch werden, wo konfiguriert, über [EcoLogits](docs/ECOLOGITS_INTEGRATION.md) berechnet; für den tatsächlichen Versand an einen lokalen Ollama-Provider ohne passende EcoLogits-Konfiguration greift ersatzweise eine eigene CPU-Auslastungsformel (`LOCAL_CPU_TDP_WATT`), sonst eine einfache Fallback-Formel. Die Weiterentwicklung dieser Schätzlogik (Live-Versand-Schätzung `/api/estimate-footprint`, bildhafte Darstellung, EcoLogits-Fallback-Stufen) ist in [`CARBON_FOOTPRINT_REDESIGN.md`](docs/CARBON_FOOTPRINT_REDESIGN.md) dokumentiert — eine zwischenzeitlich geprüfte CodeCarbon-Integration wurde dort zugunsten der eigenen Formel wieder verworfen.
 
 ## Architektur
 
@@ -48,7 +48,7 @@ ollama pull gemma4
 ollama serve
 ```
 
-`OLLAMA_MODEL`, `OLLAMA_BASE_URL` und `OLLAMA_TIMEOUT_SECONDS` steuern die Integration. `OLLAMA_ANALYSIS_TIMEOUT_SECONDS=0` lässt die lokale Dashboard-Analyse ohne Zeitlimit laufen; ein positiver Wert setzt stattdessen ein Limit in Sekunden. Ohne Ollama startet das Gateway weiterhin. `/api/ollama/status` meldet Status und Modelle.
+`OLLAMA_MODEL`, `OLLAMA_BASE_URL` und `OLLAMA_TIMEOUT_SECONDS` steuern die Integration. `OLLAMA_ANALYSIS_TIMEOUT_SECONDS=0` lässt die lokale Dashboard-Analyse ohne Zeitlimit laufen; ein positiver Wert setzt stattdessen ein Limit in Sekunden. Ohne Ollama startet das Gateway weiterhin. `/api/ollama/status` meldet Status und Modelle. `LOCAL_CPU_TDP_WATT` (optional, leer = deaktiviert) aktiviert eine grobe CPU-Auslastungsformel für Energie/CO₂ bei lokalen Ollama-Sends, wenn EcoLogits dafür keinen Wert liefert.
 
 ## Start, Datenbank und Tests
 
@@ -57,9 +57,10 @@ SQLite und Tabellen werden beim ersten Start automatisch im `instance`-Verzeichn
 ```bash
 flask --app app run --debug
 pytest
+flask calibrate-ratio
 ```
 
-Dashboard: <http://127.0.0.1:5000>, Provider: `/settings/providers`.
+Dashboard: <http://127.0.0.1:5000>, Provider: `/settings/providers`. `flask calibrate-ratio` schlägt einen kalibrierten `EXPECTED_OUTPUT_RATIO`-Wert aus echten `UsageLog`-Daten vor (Mindeststichprobe 20 erfolgreiche Sends, `ENABLE_PROMPT_LOGGING=true` nötig); ändert nichts automatisch, die Übernahme in `.env` bleibt manuell.
 
 ## Provider und Sicherheit
 
