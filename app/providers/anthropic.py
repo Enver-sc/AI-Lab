@@ -1,3 +1,4 @@
+import json
 import requests
 
 from .base import BaseProvider, ProviderError
@@ -11,12 +12,19 @@ class AnthropicProvider(BaseProvider):
 
     @property
     def headers(self) -> dict[str, str]:
-        return {
+        result = {
             "Accept": "application/json",
             "Content-Type": "application/json",
             "x-api-key": self.api_key,
             "anthropic-version": "2023-06-01",
         }
+        try:
+            custom = json.loads(self.config.custom_headers_json or "{}")
+        except (TypeError, ValueError):
+            custom = {}
+        if isinstance(custom, dict):
+            result.update(custom)
+        return result
 
     def _request(self, method: str, path: str, **kwargs) -> dict:
         try:

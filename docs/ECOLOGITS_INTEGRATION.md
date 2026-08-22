@@ -198,6 +198,12 @@ def compute_impacts(output_tokens, request_latency_seconds, provider=None, catal
   (zone=...)` (fällt bei unbekannter Zone zusätzlich auf `"WOR"` zurück, das laut
   Datensatz immer existiert — dieser zweite Fallback macht den `mix is None`-Zweig
   in der Praxis zu einem reinen Sicherheitsnetz).
+- **Update, siehe [`CARBON_FOOTPRINT_REDESIGN.md`](CARBON_FOOTPRINT_REDESIGN.md)
+  (Designvorschlag A):** liefert der Anbieter-Lookup-Pfad kein Ergebnis (z. B.
+  Modell nicht in der EcoLogits-Datenbank), fällt `compute_impacts()` seither
+  automatisch zusätzlich auf den manuellen Parameter-Pfad zurück, falls dafür
+  Werte hinterlegt sind — zweistufiger statt der hier ursprünglich beschriebenen
+  einstufigen Entscheidung.
 - Am installierten Paket (0.11.1) verifiziert: `llm_impacts()` liefert ein
   `ImpactsOutput` mit `.energy/.gwp/.adpe/.pe/.wcf` (je ein `BaseImpact` mit
   `.value: float | RangeValue` und `.unit`), `.has_errors`/`.errors` sowie
@@ -219,13 +225,16 @@ def compute_impacts(output_tokens, request_latency_seconds, provider=None, catal
   Unsicherheiten: Modellarchitektur nicht veröffentlicht." — das trifft in der
   Praxis z. B. auf `gpt-3.5-turbo` zu, dessen Architektur OpenAI nie
   veröffentlicht hat).
-- Bei Erfolg: `impacts_dict = {"energy_kwh":..., "co2_grams":...,
-  "water_liters":..., "adpe_ug_sb_eq":..., "mode":
+- Bei Erfolg: `impacts_dict = {"energy_wh":..., "co2_grams":...,
+  "water_ml":..., "adpe_ug_sb_eq":..., "mode":
   "llm_impacts"|"compute_llm_impacts"}` (GWP in kgCO2eq × 1000 → Gramm, passend
-  zur bestehenden Einheit von `co2_grams`; ADPe in kg Sb-eq × 1e9 → Mikrogramm,
-  siehe §11 — das rohe kg-Sb-eq-Feld war nicht gerundet und lag typischerweise
-  bei 1e-10..1e-11, was im Dashboard als rohe wissenschaftliche Notation
-  gerendert wurde).
+  zur bestehenden Einheit von `co2_grams`; Energie in kWh × 1000 → Wattstunde
+  (`[ERGÄNZT]`, lesbarere Größenordnung); Wasser in L × 1000 →
+  Milliliter (`[ERGÄNZT]`, siehe `CARBON_FOOTPRINT_REDESIGN.md`, sonst rundet
+  der Wert bei kurzen Prompts fast immer auf 0); ADPe in kg Sb-eq × 1e9 →
+  Mikrogramm, siehe §11 — das rohe kg-Sb-eq-Feld war nicht gerundet und lag
+  typischerweise bei 1e-10..1e-11, was im Dashboard als rohe wissenschaftliche
+  Notation gerendert wurde).
 
 Keine Session-Injektion nötig (anders als bei den HTTP-basierten
 Provider-Services) — EcoLogits ist eine reine lokale Berechnung, keine
@@ -247,6 +256,14 @@ die das Frontend erwartet, mit EcoLogits-Werten als Priorität. Die
 zurückgegebene Warnung als neuen Schlüssel `sustainability_warning` ergänzen
 (getrennt vom bestehenden `warning`-Feld der Ollama-Analyse, damit das
 Dashboard beide unterschiedlich beschriften kann).
+
+> **⚠️ ÜBERHOLT — entfernt.** Der komplette Abschnitt "Vergleich Original- vs.
+> optimierter Prompt" (bis zum Ende von §4) beschreibt eine Funktion, die
+> mittlerweile wieder entfernt wurde. Grund und Nachfolge-Design:
+> [`CARBON_FOOTPRINT_REDESIGN.md`](CARBON_FOOTPRINT_REDESIGN.md) — der
+> Vergleich war strukturell fast immer negativ für den optimierten Prompt
+> (Ollamas Optimierung zielt auf Klarheit/Präzision, nicht Kürze). Als
+> historische Aufzeichnung belassen, nicht mehr im Code aktiv.
 
 **Vergleich Original- vs. optimierter Prompt** (neu, adressiert den
 Nutzen aus dem Kontext-Abschnitt): Die Ollama-Analyse liefert bereits
@@ -365,7 +382,8 @@ Provider-Datensätzen.
 (`app/templates/dashboard.html`, `app/static/js/dashboard.js`)
 
 Die `.metrics`-Kachelzeile (aktuell CO₂e/Kosten/Dauer/Compliance) um zwei
-weitere Kacheln erweitern: Energie (kWh) und einen kombinierten
+weitere Kacheln erweitern: Energie (damals kWh, seither auf Wh umgestellt —
+siehe §3) und einen kombinierten
 Wasser/ADPe-Hinweis — Anzeige von `–`, wenn EcoLogits keinen Wert liefern
 konnte (die Fallback-Formel liefert nur Energie/CO₂, nie Wasser/ADPe).
 `render()` in `dashboard.js` um die Befüllung aus `data.sustainability.*`
@@ -373,6 +391,11 @@ erweitern, sowie den bestehenden `toast()`-Aufruf um `data.sustainability_warnin
 ergänzen (mit dem bestehenden `data.warning` zusammengeführt, kein zweiter
 Toast). Den Erfolgspfad nach dem Versand erweitern, um die realen
 `sustainability`-Werte anzuzeigen, die `/api/send` künftig liefert.
+
+> **⚠️ ÜBERHOLT — entfernt.** Das folgende "Vergleichs-Widget Original vs.
+> optimiert" wurde zusammen mit der zugehörigen Backend-Logik entfernt, siehe
+> Hinweis in §4 und [`CARBON_FOOTPRINT_REDESIGN.md`](CARBON_FOOTPRINT_REDESIGN.md).
+> Als historische Aufzeichnung belassen.
 
 **Vergleichs-Widget Original vs. optimiert** (neu): Das bestehende
 `#optimization`-Panel zeigt den optimierten Prompt-Text und Vorschläge, aber
@@ -441,15 +464,16 @@ Browser-Tooltip über das `title`-Attribut.
   tragen.
 - **`tests/test_routes.py`** (5 neue Tests): `/api/analyze` liefert weiterhin
   ein gültiges `sustainability`-Dict bei deaktiviertem EcoLogits (kein Absturz,
-  kein fehlender Schlüssel); ein Prompt mit abweichendem `optimized_prompt`
-  liefert `optimized.sustainability.co2_grams` mit weniger Prompt-Token als
-  das Original (deterministisch über eine gepatchte `analyze_with_ollama`-
-  Antwort, gleicher Fixture-Stil wie bei bestehenden Analyse-Tests); ein Fall
-  mit identischem `optimized_prompt` bestätigt, dass der Schlüssel `optimized`
-  vollständig fehlt; `/api/send` befüllt `UsageLog.estimated_co2_grams` aus
-  einer echten (nicht gepatchten) EcoLogits-Berechnung für einen Ollama-
+  kein fehlender Schlüssel); `/api/send` befüllt `UsageLog.estimated_co2_grams`
+  aus einer echten (nicht gepatchten) EcoLogits-Berechnung für einen Ollama-
   Provider mit gesetzten `eco_active_params_b`/`eco_total_params_b`, und
   belässt es bei `0`, wenn EcoLogits deaktiviert ist.
+  **⚠️ ÜBERHOLT:** die ursprünglich hier beschriebenen zwei Tests zum
+  `optimized`-Vergleich (`test_analyze_returns_optimized_comparison_when_prompt_differs`,
+  `test_analyze_omits_optimized_when_prompt_unchanged`) wurden durch einen
+  einzigen Regressionstest ersetzt (`test_analyze_never_returns_optimized_comparison`
+  in `tests/test_routes.py`), der bestätigt, dass der Schlüssel `optimized`
+  nie mehr auftaucht, siehe [`CARBON_FOOTPRINT_REDESIGN.md`](CARBON_FOOTPRINT_REDESIGN.md).
 - **`tests/conftest.py`**: die neuen `ECOLOGITS_*`-Schlüssel in `TestConfig`
   ergänzen, damit Zugriffe auf `current_app.config[...]` in Tests, die den
   Service nicht explizit patchen, keinen `KeyError` auslösen.
@@ -478,8 +502,10 @@ lokal laufenden Ollama, nicht gemockt):
    einem echten Browser ausgeführt.
 5. `POST /api/analyze` per `curl` gegen den echten Server (mit echtem, lokal
    laufendem Ollama) ausgeführt: Antwort enthält `sustainability` mit
-   `energy_kwh`, `co2_grams`, `water_liters`, `adpe_ug_sb_eq` — alle ungleich
-   Null (`mode: "compute_llm_impacts"`).
+   `energy_kwh` (damaliger Feldname, seither `energy_wh`), `co2_grams`,
+   `water_liters` (damaliger Feldname, seither `water_ml`, siehe
+   `CARBON_FOOTPRINT_REDESIGN.md`), `adpe_ug_sb_eq` — alle
+   ungleich Null (`mode: "compute_llm_impacts"`).
 6. Derselbe Testlauf lieferte einen von Ollama tatsächlich abweichenden
    `optimized_prompt` — die Antwort enthielt den `optimized`-Schlüssel mit
    eigenen `sustainability`-Werten. Dabei zeigte sich der in §4 beschriebene
@@ -514,7 +540,18 @@ lokal laufenden Ollama, nicht gemockt):
 
 ---
 
-## 10. Folgeanpassung: Stromkosten für lokale Modelle `[ERLEDIGT]`
+## 10. Folgeanpassung: Stromkosten für lokale Modelle
+
+> **⚠️ ÜBERHOLT — entfernt.** Die "Stromkosten"-Kachel und die zugehörige
+> `estimate_electricity_cost`-Berechnung wurden wieder entfernt. Der hier
+> angekündigte spätere Ersatz über CodeCarbon wurde **ebenfalls nicht
+> umgesetzt** — CodeCarbon liefert auf der tatsächlichen Zielhardware (Windows,
+> AMD, keine GPU) selbst keine echte Messung, sondern nur einen TDP-Schätzwert,
+> und wurde deshalb zugunsten einer eigenen, leichtgewichtigen `psutil`-Formel
+> verworfen (siehe [`CARBON_FOOTPRINT_REDESIGN.md`](CARBON_FOOTPRINT_REDESIGN.md),
+> Nachtrag 24). Eine "Stromkosten"-Kachel auf Basis dieser Formel ist Stand
+> jetzt nur ein unentschiedener Backlog-Punkt, kein aktiver Plan. Als
+> historische Aufzeichnung belassen, nicht mehr im Code aktiv.
 
 Aus einem manuellen Testlauf ergab sich eine weitere Beobachtung: Die "Kosten"-Kachel
 zeigt bei lokalen Ollama-Modellen immer `0 €`, da `model_catalog.py` deren

@@ -1,4 +1,4 @@
-from app.services.ecologits_service import FALLBACK_WARNING, compute_impacts
+from app.services.ecologits_service import FALLBACK_WARNING, MANUAL_FALLBACK_WARNING, compute_impacts
 
 BASE_CONFIG = {
     "ECOLOGITS_ENABLED": True,
@@ -59,6 +59,20 @@ def test_provider_lookup_path_used_when_ecologits_provider_set():
     assert result["co2_grams"] > 0
 
 
+def test_provider_lookup_path_used_for_catalog_model_via_model_id():
+    # Regression: model_catalog.py's cloud_small/cloud_large entries carry a confirmed
+    # ecologits_provider ("anthropic") but no ProviderConfiguration exists yet at analyze-time
+    # (provider=None). The lookup must fall back to catalog_model["model_id"] for the model name
+    # instead of silently returning (None, None) -- this previously left water/ADPe unavailable
+    # on the dashboard for every pre-send estimate involving these catalog entries.
+    catalog_model = {"ecologits_provider": "anthropic", "model_id": "claude-haiku-4-5-20251001", "eco_active_params_b": None, "eco_total_params_b": None}
+    result, warning = compute_impacts(200, 3.0, catalog_model=catalog_model, app_config=BASE_CONFIG)
+    assert result is not None
+    assert result["mode"] == "llm_impacts"
+    assert result["water_ml"] is not None
+    assert result["adpe_ug_sb_eq"] is not None
+
+
 def test_missing_params_returns_none_without_warning():
     model = {**CATALOG_MODEL, "eco_active_params_b": None, "eco_total_params_b": None}
     result, warning = compute_impacts(200, 3.0, catalog_model=model, app_config=BASE_CONFIG)
@@ -72,6 +86,17 @@ def test_unknown_model_name_falls_back_with_warning():
     assert warning == FALLBACK_WARNING
 
 
+def test_unknown_model_falls_back_to_manual_parameters_when_available():
+    # Zweistufiger Fallback: Anbieter-Lookup findet das Modell nicht, aber derselbe Provider
+    # traegt zusaetzlich manuelle Parameter -- damit soll trotzdem ein Ergebnis zustande kommen,
+    # statt komplett aufzugeben wie im Fall ohne manuelle Parameter oben.
+    provider = FakeProvider(ecologits_provider="openai", model_name="does-not-exist-9000", eco_active_params_b=8, eco_total_params_b=8)
+    result, warning = compute_impacts(200, 3.0, provider=provider, app_config=BASE_CONFIG)
+    assert result is not None
+    assert result["mode"] == "compute_llm_impacts"
+    assert warning == MANUAL_FALLBACK_WARNING
+
+
 def test_unregistered_zone_falls_back_to_world_average():
     model = {**CATALOG_MODEL, "eco_electricity_mix_zone": "ZZZ"}
     result, warning = compute_impacts(200, 3.0, catalog_model=model, app_config=BASE_CONFIG)
@@ -82,7 +107,7 @@ def test_provider_field_overrides_catalog():
     provider = FakeProvider(eco_active_params_b=1, eco_total_params_b=1)
     result_provider, _ = compute_impacts(200, 3.0, provider=provider, catalog_model=CATALOG_MODEL, app_config=BASE_CONFIG)
     result_catalog, _ = compute_impacts(200, 3.0, catalog_model=CATALOG_MODEL, app_config=BASE_CONFIG)
-    assert result_provider["energy_kwh"] < result_catalog["energy_kwh"]
+    assert result_provider["energy_wh"] < result_catalog["energy_wh"]
 
 
 def test_catalog_falls_back_to_global_config_when_unset():
@@ -90,4 +115,4 @@ def test_catalog_falls_back_to_global_config_when_unset():
     high_pue = {**BASE_CONFIG, "ECOLOGITS_DEFAULT_DATACENTER_PUE": 2.0}
     result_low, _ = compute_impacts(200, 3.0, catalog_model=CATALOG_MODEL, app_config=low_pue)
     result_high, _ = compute_impacts(200, 3.0, catalog_model=CATALOG_MODEL, app_config=high_pue)
-    assert result_low["energy_kwh"] < result_high["energy_kwh"]
+    assert result_low["energy_wh"] < result_high["energy_wh"]

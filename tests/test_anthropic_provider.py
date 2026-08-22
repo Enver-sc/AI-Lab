@@ -14,6 +14,7 @@ def config():
         output_cost_per_million=5,
         hosting_region="Global",
         is_eu_hosted=False,
+        custom_headers_json="{}",
     )
 
 
@@ -61,3 +62,20 @@ def test_anthropic_chat_returns_usage():
 def test_anthropic_cost_uses_input_and_output_prices():
     provider = AnthropicProvider(config(), "sk-ant-test")
     assert provider.estimate_cost(1_000_000, 1_000_000) == 6
+
+
+def test_anthropic_sends_custom_headers():
+    # Regression: custom_headers_json wurde gespeichert, aber beim eigentlichen
+    # API-Aufruf nie gelesen -- das Formularfeld "Benutzerdefinierte Header" hatte
+    # dadurch keine Wirkung.
+    cfg = config()
+    cfg.custom_headers_json = '{"X-Gateway-Key": "abc123"}'
+    response = Mock(status_code=200)
+    response.json.return_value = {"content": [{"type": "text", "text": "Antwort"}], "usage": {}}
+    http = Mock()
+    http.request.return_value = response
+    provider = AnthropicProvider(cfg, "sk-ant-test", session=http)
+
+    provider.generate("Hallo")
+
+    assert http.request.call_args.kwargs["headers"]["X-Gateway-Key"] == "abc123"

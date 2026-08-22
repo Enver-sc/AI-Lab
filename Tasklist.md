@@ -154,3 +154,276 @@ umgesetzt):
 
 Empfehlung aus der Diskussion: (A) + (B) zuerst (klein, schnell), (C) als
 separates, größeres Stück Arbeit danach.
+
+### Bug `[ERLEDIGT]`: Ollama-Antworten beim echten Versand auf Englisch und in JSON-Struktur statt normalem Fließtext
+
+**Symptom**: Prompt "Was ist Entropie?" über einen lokalen Ollama-Provider gesendet
+→ Antwort auf Englisch, verschachtelt als JSON-artige Struktur
+(`"Concept of Entropy" → "Information Theory" → "Definition": "..."`), nicht als
+normaler deutscher Fließtext.
+
+**Wahrscheinliche Ursache, bereits am Code nachvollzogen**: `OllamaService.generate()`
+(`app/services/ollama_service.py`, Zeile 17) setzt `"format":"json"` **fest und
+unbedingt** für jeden Aufruf:
+
+```python
+response = self.http.post(f"{self.base_url}/api/generate", json={"model":self.model,"prompt":prompt,"system":system,"stream":False,"format":"json"}, timeout=self.timeout)
+```
+
+Diese Methode wird von **zwei** unterschiedlichen Aufrufern geteilt:
+- `analysis_service.analyze_with_ollama()` — interne Prompt-Analyse, wo JSON-Ausgabe
+  tatsächlich gewollt ist (der `SYSTEM_PROMPT` verlangt explizit ein JSON-Objekt
+  mit festen Schlüsseln).
+- `app/providers/ollama.py`, `OllamaProvider.generate()` — der **echte
+  Sendevorgang** an einen vom Nutzer konfigurierten Ollama-Provider, wo eine
+  normale Konversationsantwort erwartet wird, kein JSON.
+
+Da `format: json` unbedingt gesetzt ist, wird auch der echte Sendevorgang in den
+strukturierten JSON-Modus gezwungen — das erklärt plausibel sowohl die
+verschachtelte Struktur als auch die Sprachumschaltung auf Englisch (Modelle
+tendieren im JSON-Modus oft zu englischen Schlüsselbezeichnungen, unabhängig von
+der Prompt-Sprache).
+
+**Root-Cause-Analyse noch nicht abschließend verifiziert** (z. B. nicht getestet,
+ob `format: json` weglassen bei echten Sendevorgängen das Problem tatsächlich
+behebt) — nur der Code-Fund dokumentiert. Naheliegender Lösungsansatz für später:
+`generate()` um einen Parameter erweitern (z. B. `format=None`), sodass
+`OllamaProvider.generate()` ohne erzwungenes JSON aufruft, während
+`analyze_with_ollama()` weiterhin `format="json"` explizit anfordert.
+
+**Priorität**: niedrig, aktuell nicht zu bearbeiten — nur zur späteren Aufarbeitung
+festgehalten.
+
+**Update — behoben**: Root-Cause bestätigt (derselbe Effekt trat erneut auf, diesmal
+als leere `{}`-Antwort bei "Was ist ein Gnu?"). Fix wie hier skizziert umgesetzt:
+`generate()` bekam einen `json_mode`-Parameter (Default `False`), `"format":"json"`
+wird nur noch gesetzt, wenn explizit angefordert. `analyze_with_ollama()` ruft jetzt
+`service.generate(redacted, SYSTEM_PROMPT, json_mode=True)`; `OllamaProvider.generate()`
+(echter Sendevorgang) bleibt unverändert und läuft damit automatisch ohne erzwungenes
+JSON. Siehe `docs/CARBON_FOOTPRINT_REDESIGN.md`, Nachtrag 27.
+
+**Verwandter Folgefund `[ERLEDIGT]`**: Nutzer meldete danach JSON-Antworten von einem
+**externen** Provider (Anthropic/OpenAI-kompatibel) — zunächst vermutet, mit dem
+`json_mode`-Fix zusammenzuhängen. War es nicht: `send()` schickt Prompts an externe
+Provider unverändert weiter, ohne jede eigene Formatierungsvorgabe. Die externe Modell-
+Antwort zitierte selbst die Anweisung ("Du hattest gefordert: ...JSON..."), die kam
+also aus dem Prompt-Text. Ursache: Der `SYSTEM_PROMPT` der lokalen Analyse
+(`analysis_service.py`) verlangt vom Analyse-Modell selbst eine JSON-Antwort — das
+Modell übernahm diese Anweisung teils versehentlich in den von ihm vorgeschlagenen
+`optimized_prompt`. Klickte der Nutzer "Optimierten Prompt verwenden" und sendete das
+an einen externen Provider, wies der Prompt diesen unabsichtlich zu einer JSON-Antwort
+an. Fix: `SYSTEM_PROMPT` um eine explizite Klarstellung ergänzt — `optimized_prompt`
+ist ein Prompt für ein beliebiges Zielmodell, keine Kopie der eigenen Antwortformat-
+Anweisung, und darf selbst keine Formatierungsvorgabe wie "antworte als JSON"
+enthalten, außer der Originalprompt verlangt das ausdrücklich. Test:
+`tests/test_analysis.py::test_system_prompt_forbids_leaking_own_format_instruction_into_optimized_prompt`
+(prüft nur, dass die Anweisung im Prompt-String steht — ob das jeweilige Analyse-Modell
+sich daran hält, lässt sich nicht deterministisch testen). `pytest`: 100/100 grün.
+
+### Architektur-/UML-Diagramm der EcoLogits-Implementierung für die Projektpräsentation
+
+**Ziel**: eine Diagramm-Darstellung (UML oder alternative Visualisierung) der
+EcoLogits-Integration erstellen — Fallback-Stufen (Anbieter-Lookup → manuelle
+Parameter → Formel), beteiligte Module (`ecologits_service.py`,
+`sustainability_service.py`, `app/routes/api.py`), Datenfluss zwischen
+`/api/analyze`, `/api/estimate-footprint` und `/api/send`.
+
+**Kontext**: Projektpräsentation in ca. 4 Wochen (Zieltermin ca. 2026-09-18,
+ausgehend vom 2026-08-21) — das Diagramm soll dort gezeigt werden können, um
+die EcoLogits-Architektur verständlich zu vermitteln.
+
+**Priorität**: nicht dringend, aber terminlich relevant — rechtzeitig vor der
+Präsentation einplanen, nicht erst kurz davor.
+
+### Reminder: `flask calibrate-ratio` gemeinsam testen, sobald genug echte Sends vorliegen
+
+**Kontext**: `EXPECTED_OUTPUT_RATIO` (Platzhalter `6`) lässt sich per neuem
+CLI-Kommando `flask calibrate-ratio` aus echten `UsageLog`-Daten kalibrieren
+(Median aus tatsächlich beobachteten Output-/Input-Token-Verhältnissen,
+Mindeststichprobe 20 erfolgreiche Sends). Details siehe
+`docs/CARBON_FOOTPRINT_REDESIGN.md`, Nachtrag 32.
+
+**Aktueller Stand**: `ENABLE_PROMPT_LOGGING` wurde lokal auf `true` gesetzt,
+damit ab jetzt Daten gesammelt werden. Die lokale DB hatte zum Zeitpunkt der
+Umsetzung noch 0 Einträge — es braucht also erst eine Weile echte Nutzung.
+
+**To-Do**: In naher Zukunft, sobald genug echte Sends gelaufen sind,
+gemeinsam `flask calibrate-ratio` ausführen und prüfen, ob der Vorschlag
+plausibel ist, bevor `EXPECTED_OUTPUT_RATIO` in der `.env` angepasst wird.
+
+### Bug `[ERLEDIGT]`: "Benutzerdefinierte Header" im Provider-Formular ohne Wirkung
+
+**Symptom** (beim Ergänzen von Tooltips im Provider-Formular entdeckt):
+Das Feld "Benutzerdefinierte Header (JSON)" wird gespeichert
+(`custom_headers_json` in `ProviderConfiguration`), aber weder
+`OpenAICompatibleProvider` noch `AnthropicProvider` haben dieses Feld beim
+eigentlichen API-Aufruf gelesen — die `headers`-Property baute nur
+`Accept`/`Content-Type`/`Authorization` bzw. `x-api-key`. Das Feld sah
+funktional aus, hatte aber keinerlei Effekt.
+
+**Fix**: Beide `headers`-Properties parsen jetzt `custom_headers_json` und
+mergen es in die Request-Header (eigene Werte können Defaults wie
+`Authorization` überschreiben, für Gateways mit abweichender
+Authentifizierung). Ungültiges JSON wird stillschweigend ignoriert (wie
+schon beim Speichern in `apply_provider()` validiert).
+
+Tests: `tests/test_anthropic_provider.py` und neues
+`tests/test_openai_compatible_provider.py` (Custom-Header werden
+mitgeschickt, ungültiges JSON wird ignoriert). `pytest`: 99/99 grün.
+
+Im selben Zug: 13 Tooltip-Hilfetexte ("?" mit `title`-Attribut, CSS-Klasse
+`.field-help`) im Provider-Formular ergänzt (`app/templates/providers.html`),
+u. a. für die zuvor öfter verwirrenden EcoLogits-Felder (Aktive/Gesamt-
+parameter, PUE, WUE, Strommix-Zone) sowie Provider-Typ, API Base URL,
+Modellname, Hosting-Region, Preise, Kontextfenster und Custom Headers.
+
+### Bug `[ERLEDIGT]`: Prompt und Analyse-Ergebnis gingen beim Seitenwechsel verloren
+
+**Symptom**: Wechsel vom Dashboard zu Provider-Einstellungen und zurück
+leerte das Prompt-Feld und alle Analyse-Ergebnisse (Empfehlung, Kacheln,
+Kosten/Dauer) — erneute Analyse nötig, keine Historie.
+
+**Ursache**: Provider-Einstellungen ist eine eigene Route (`/settings/providers`),
+kein SPA-Tab — der Wechsel dorthin und zurück ist ein vollständiger
+Seitenneuaufbau, `dashboard.js` startet jedes Mal komplett neu ohne jede
+Persistenz.
+
+**Entscheidung (mit Nutzer abgestimmt)**: Persistenz auf Prompt-Text +
+letztes Analyse-Ergebnis begrenzt (kein laufender Chat-Verlauf), Speicherort
+`sessionStorage` statt `localStorage` — verschwindet mit dem Tab/Browser,
+passt zum bestehenden Privacy-by-Design-Ansatz (Prompts werden serverseitig
+standardmäßig nicht gespeichert).
+
+**Umsetzung**: `saveState()`/`restoreState()` in `app/static/js/dashboard.js`,
+Schlüssel `sag-dashboard-state`. `saveState()` wird bei jeder Prompt-Änderung
+und am Ende von `render()` aufgerufen (das deckt sowohl `analyze()` als auch
+den "Optimierten Prompt verwenden"-Klick und den Discard-Reset nach dem
+Versand ab). `restoreState()` läuft nach `loadProviders()` (nicht davor —
+`render()` braucht das bereits geladene `providers`-Array für die
+Dropdown-Vorbelegung), ruft bei vorhandenem Zustand einfach `render()` mit
+dem gespeicherten Analyse-Objekt erneut auf statt eigene Restore-Logik zu
+duplizieren. Beide Funktionen fangen Storage-Fehler ab (z. B. privater
+Modus) und lassen die App sonst unverändert weiterlaufen.
+
+Kein neuer Test (keine JS-Testinfrastruktur im Projekt). Cache-Buster
+`v='49'`, `pytest` (99 Tests, unverändert) grün, statisch live verifiziert
+(neue Funktionen korrekt ausgeliefert) — interaktive Bestätigung
+(sessionStorage-Round-trip im echten Browser) noch durch Nutzer-Test
+ausstehend.
+
+### Neue Seite: "Info" im Dashboard-Menü (Version, Autoren, Disclaimer)
+
+**Ziel**: Ein Menüpunkt "Info" mit aktueller Versionsangabe, Autoren
+("EnvKeMa" als Platzhalter) und einem kurzen Disclaimer (Open Source, KI
+kann Fehler machen, das Board bewertet Prompts nicht inhaltlich).
+
+**Versionierungs-Entscheidung**: Bewusst **keine** manuell gepflegte
+Versionsnummer, die bei einem Merge in die Mainline vergessen werden
+könnte — genau das war die Sorge im Team-Kontext ("muss auch funktionieren,
+wenn Kollegen pushen"). Stattdessen wird die Version automatisch aus Git
+abgeleitet (`git describe --tags --always --dirty`, `app/services/version_service.py`),
+einmal beim App-Start berechnet und in `app.config["APP_VERSION"]`
+zwischengespeichert. Ohne Tags liefert das schlicht den kurzen Commit-Hash
+(`+dirty`, falls unversionierte Änderungen vorliegen) — immer korrekt für
+den tatsächlich laufenden Stand, ganz ohne dass irgendjemand daran denken
+muss, eine Zahl hochzuzählen.
+
+**Damit kein AGENTS.md-Thema** — es gibt keinen Prozess-Schritt, den
+jemand befolgen müsste, also auch keine Regel, die dokumentiert werden
+müsste. Optional für später (z. B. vor der Präsentation): echte Git-Tags
+setzen (`git tag v1.0`), dann zeigt `git describe` automatisch den
+Tag-Namen statt nur des Hashes — das ist aber eine freiwillige Verschönerung,
+keine Voraussetzung.
+
+**Umsetzung**: `app/routes/main.py` (`GET /info`), neues Template
+`app/templates/info.html`, Nav-Link in `app/templates/base.html`. Fällt
+auf `"unbekannt"` zurück, wenn kein Git verfügbar ist (z. B. gepackte
+Auslieferung ohne `.git`-Ordner).
+
+Tests: `tests/test_version_service.py` (neu, 3 Tests: echter Git-Aufruf in
+diesem Repo, Fallback bei fehlendem Git, Fallback bei Subprocess-Fehler),
+`tests/test_routes.py::test_info_page_shows_version`. `pytest` (104 Tests)
+grün. Live verifiziert: `/info` zeigt aktuell `c3d015a-dirty`.
+
+### Finding (bewusst nicht geändert): Compliance Stufe 1 erkennt Bankdaten-Absicht ohne echte IBAN nicht
+
+**Symptom**: Prompt "Ich möchte an einen Käufer per mail meine Kontodaten
+zwecks Überweisung des Kaufbetrags für eine Stereoanlage schicken.
+Formuliere mir diese Mail." liefert "Compliance 100/100, keine lokalen
+Treffer" — erwartet wurde mindestens ein Treffer, da es um Bankdaten geht.
+
+**Analyse**: Kein Regressionsbug (Git-History von `compliance_service.py`
+geprüft — die betroffene Stichwortliste enthielt seit ihrer Einführung nur
+"kontostand", nie "Kontodaten"). Zwei unabhängige lokale Prüfmechanismen
+greifen hier strukturell nicht: (1) Die IBAN-Erkennung ist prüfsummen-
+validiert (`_valid_iban()`, Mod-97) und erkennt nur eine tatsächlich im
+Text vorhandene, gültige IBAN — mit einer echten Test-IBAN im Prompt
+schlägt der Check nachweislich zu (vom Nutzer verifiziert). Der gemeldete
+Prompt enthielt aber keine echte Kontonummer, nur die Absicht, eine zu
+verschicken. (2) Die Stichwortliste für "Finanzdaten" (`KEYWORDS` in
+`compliance_service.py`) enthält nur `kontostand|steuererklärung|gehalt|
+finanzdaten` — "Kontodaten" ist dort nicht gelistet, obwohl semantisch
+sehr nah an "Finanzdaten".
+
+**Entscheidung**: Bewusst **nicht** geändert (kurz umgesetzt und wieder
+zurückgenommen) — ein Kollege plant ohnehin Arbeiten an genau diesem Teil
+der Compliance-Erkennung, daher hier keine Änderung an dessen Funktions-
+bereich vornehmen. Für die weitere Arbeit festgehalten: Stufe 1 ist eine
+deterministische Muster-/Stichwort-Erkennung, kein semantisches
+Verständnis — sie erkennt nur Wörter/Werte, die tatsächlich im Prompt
+stehen, keine Absicht ohne Stichwort-Treffer. "Kontodaten" als Synonym zu
+"Finanzdaten" wäre eine mögliche, sehr kleine Ergänzung der
+`KEYWORDS`-Stichwortliste in `compliance_service.py`, falls gewünscht.
+
+### Finding (nur dokumentiert, nicht geändert): Sensibilitäts-Signal aus der semantischen Analyse verpufft vor Anzeige/Routing
+
+**Reproduktion** — folgenden Prompt im Dashboard analysieren (Zielmodus
+"Automatisch"):
+
+> Ich muss einen Käufer per E-Mail meine Kontodaten für die Überweisung
+> des Kaufbetrages einer Stereoanlage schicken. Formuliere mir eine
+> professionelle und freundliche E-Mail, die lediglich Platzhalter für
+> die Kontodaten enthält und den Zweck der Überweisung klar benennt. Die
+> E-Mail soll darauf achten, dass der Betrag und der Kaufgegenstand
+> erwähnt werden, um Sicherheit zu geben.
+
+**Beobachtung**: Das lokale Ollama-Modell (`gemma4`) formuliert die
+angeforderte E-Mail korrekt mit Platzhaltern (`IBAN: [Deine IBAN]` usw.) —
+kein Fehlverhalten des Modells selbst. Direkt gegen die beiden lokalen
+Prüfmechanismen getestet (`inspect_prompt()` und `analyze_with_ollama()`):
+
+- Regex-Check (`compliance_service.py`): `score: 100`, `findings: []` —
+  derselbe bereits bekannte "Kontodaten fehlt als Stichwort"-Fund von oben.
+- Semantische Analyse (`analysis_service.py`, dasselbe `gemma4`):
+  `sensitivity_score: 50`, `compliance_score: 80`,
+  `contains_personal_data: false`, Kategorie `"Email_Drafting"`,
+  Begründung: *"Standard-E-Mail-Verfassen mit leicht erhöhter Sensibilität
+  aufgrund des Themas Finanzen"*. Das Modell nimmt die erhöhte Sensibilität
+  also durchaus wahr.
+
+**Der eigentliche Fund liegt in der Verdrahtung dazwischen, nicht im
+Regex-Teil**:
+
+1. `analysis_payload()` (`app/routes/api.py:104`) merged den semantischen
+   `compliance_score` zwar in `analysis["compliance_score"]`
+   (`min(analysis_score, regex_score)`), aber die im Dashboard sichtbare
+   "Compliance"-Kachel liest ausschließlich `data.compliance.score` — den
+   reinen Regex-Wert. Der informiertere gemergte Wert wird nirgends im
+   Frontend gelesen (geprüft: kein Treffer für `analysis.compliance_score`
+   in `dashboard.js`) und ist damit für die Anzeige faktisch tot.
+2. `recommend()` (`recommendation_service.py:5`) behandelt einen Prompt
+   nur dann als "sensibel" (→ bevorzugt lokal/EU), wenn
+   `sensitivity_score >= 60`. Mit `50` liegt dieser Prompt knapp
+   **unter** der Schwelle → keine Schutzwirkung. Im Zielmodus
+   "Automatisch" empfiehlt das Tool dadurch tatsächlich **cloud_small**
+   (externe Cloud-API) für einen Prompt, bei dem es ums Versenden von
+   Bankdaten per E-Mail geht — obwohl das Modell selbst die erhöhte
+   Sensibilität bereits erkannt hat.
+
+**Status**: Nur als Fund dokumentiert, **keine Code-Änderung
+vorgenommen** — betrifft `recommendation_service.py` und die
+Anzeige-Verdrahtung in `api.py`/`dashboard.js`, nicht die Stichwortliste
+aus dem Fund oben. Mögliche spätere Ansatzpunkte, falls gewünscht:
+Schwelle in `recommend()` senken (z. B. 50 statt 60), und/oder den
+gemergten `compliance_score` statt des reinen Regex-Werts in der
+Dashboard-Kachel anzeigen.

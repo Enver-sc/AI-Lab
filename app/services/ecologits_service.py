@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 KNOWN_PROVIDERS = {"openai", "anthropic", "cohere", "google_genai", "huggingface_hub", "mistralai"}
 FALLBACK_ZONE = "WOR"
 FALLBACK_WARNING = "EcoLogits-Berechnung nicht möglich; Standardschätzung wird verwendet."
+MANUAL_FALLBACK_WARNING = "Modell nicht in EcoLogits-Datenbank gefunden; Schätzung basiert auf manuellen Parametern statt auf einem bestätigten Datenbankeintrag."
 
 
 def _scalar(value: int | float | RangeValue) -> float:
@@ -26,9 +27,15 @@ def _resolve(field, provider, catalog_model, default=None):
 
 def _to_impacts_dict(impacts, mode: str) -> dict:
     return {
-        "energy_kwh": round(_scalar(impacts.energy.value), 6),
+        # kWh -> Wh, lesbarere Groessenordnung fuer die typischen Werte in diesem Projekt
+        # (analog zu den Einheitswechseln bei Wasser/ADPe).
+        "energy_wh": round(_scalar(impacts.energy.value) * 1000, 4),
         "co2_grams": round(_scalar(impacts.gwp.value) * 1000, 4),
-        "water_liters": round(_scalar(impacts.wcf.value), 4),
+        # Bei kurzen Prompts (wenige Dutzend Ausgabe-Token) liegt der Wasserverbrauch typischerweise
+        # im einstelligen Mikroliter- bis niedrigen Milliliter-Bereich -- in Litern gerundet wuerde
+        # das fast immer zu 0.0 runden (dieselbe Art Rundungsproblem wie bei ADPe unten). Milliliter
+        # (L * 1000) ergibt eine lesbare, selten auf 0 rundende Groessenordnung.
+        "water_ml": round(_scalar(impacts.wcf.value) * 1000, 4),
         # ADPe liegt typischerweise bei 1e-10..1e-11 kg -- in kg gerundet waere der Wert im
         # Frontend nicht mehr ohne wissenschaftliche Notation darstellbar. Mikrogramm (kg * 1e9)
         # ergibt eine lesbare Groessenordnung, daher der Einheitswechsel im Feldnamen.
@@ -46,7 +53,16 @@ def compute_impacts(output_tokens, request_latency_seconds, provider=None, catal
     zone = _resolve("eco_electricity_mix_zone", provider, catalog_model, app_config.get("ECOLOGITS_ELECTRICITY_MIX_ZONE"))
     try:
         if eco_provider in KNOWN_PROVIDERS:
-            return _compute_via_provider_lookup(eco_provider, provider, output_tokens, request_latency_seconds, zone)
+            result, warning = _compute_via_provider_lookup(eco_provider, provider, catalog_model, output_tokens, request_latency_seconds, zone)
+            if result is not None:
+                return result, warning
+            # Zweistufiger Fallback: der Anbieter-Lookup lieferte kein Ergebnis (z. B. Modell noch
+            # nicht in EcoLogits' Datenbank) -- falls zusaetzlich manuelle Parameter hinterlegt
+            # sind, damit weiterversuchen statt komplett aufzugeben.
+            manual_result, _ = _compute_via_manual_parameters(provider, catalog_model, app_config, output_tokens, request_latency_seconds, zone)
+            if manual_result is not None:
+                return manual_result, MANUAL_FALLBACK_WARNING
+            return None, warning
         return _compute_via_manual_parameters(provider, catalog_model, app_config, output_tokens, request_latency_seconds, zone)
     except EcoLogitsError as exc:
         logger.warning("EcoLogits-Berechnung fehlgeschlagen: %s", exc)
@@ -58,8 +74,15 @@ def compute_impacts(output_tokens, request_latency_seconds, provider=None, catal
         return None, FALLBACK_WARNING
 
 
-def _compute_via_provider_lookup(eco_provider, provider, output_tokens, request_latency_seconds, zone):
-    model_name = provider.model_name if provider is not None else None
+def _compute_via_provider_lookup(eco_provider, provider, catalog_model, output_tokens, request_latency_seconds, zone):
+    # Vorab-Schaetzung (/api/analyze) hat noch keinen echten Provider, nur einen Katalogeintrag --
+    # dessen model_id traegt hier denselben bestaetigten Modellnamen (siehe model_catalog.py).
+    if provider is not None:
+        model_name = provider.model_name
+    elif catalog_model is not None:
+        model_name = catalog_model.get("model_id")
+    else:
+        model_name = None
     if not model_name:
         return None, None
     impacts = llm_impacts(provider=eco_provider, model_name=model_name, output_token_count=output_tokens, request_latency=request_latency_seconds, electricity_mix_zone=zone)

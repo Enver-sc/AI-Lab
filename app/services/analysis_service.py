@@ -3,7 +3,7 @@ from .compliance_service import redact_sensitive
 from .ollama_service import OllamaError, OllamaService
 
 DEFAULT = {"prompt_category":"unbekannt","complexity_score":35,"sensitivity_score":20,"compliance_score":80,"contains_personal_data":False,"contains_confidential_data":False,"copyright_risk":"low","recommended_model_class":"cloud_small","optimization_suggestions":["Formuliere Ziel und gewünschtes Ausgabeformat präzise."],"optimized_prompt":"","short_reasoning":"Sichere regelbasierte Standardanalyse, da keine valide Modellanalyse verfügbar war."}
-SYSTEM_PROMPT = """Du analysierst Prompts lokal. Antworte ausschließlich mit einem JSON-Objekt und den Schlüsseln prompt_category, complexity_score, sensitivity_score, compliance_score, contains_personal_data, contains_confidential_data, copyright_risk, recommended_model_class, optimization_suggestions, optimized_prompt, short_reasoning. Scores sind Ganzzahlen 0..100; copyright_risk ist low|medium|high. Wähle für einfache Standardanfragen cloud_small (Claude Haiku 4.5) und nur für komplexes Schlussfolgern, anspruchsvolle Programmierung oder umfangreiche Analysen cloud_large (Claude Sonnet 4.6). Verwende local_small oder local_large bei sensiblen Daten und eu_hosted, wenn EU-Hosting erforderlich ist. Keine Markdown-Codeblöcke."""
+SYSTEM_PROMPT = """Du analysierst Prompts lokal. Antworte ausschließlich mit einem JSON-Objekt und den Schlüsseln prompt_category, complexity_score, sensitivity_score, compliance_score, contains_personal_data, contains_confidential_data, copyright_risk, recommended_model_class, optimization_suggestions, optimized_prompt, short_reasoning. Scores sind Ganzzahlen 0..100; copyright_risk ist low|medium|high. Wähle für einfache Standardanfragen cloud_small (Claude Haiku 4.5) und nur für komplexes Schlussfolgern, anspruchsvolle Programmierung oder umfangreiche Analysen cloud_large (Claude Sonnet 4.6). Verwende local_small oder local_large bei sensiblen Daten und eu_hosted, wenn EU-Hosting erforderlich ist. Keine Markdown-Codeblöcke. optimized_prompt ist ein verbesserter Nutzerprompt für ein beliebiges Zielmodell, keine Kopie deiner eigenen Antwortformat-Anweisung: optimized_prompt darf selbst keine Formatierungsvorgabe wie "antworte als JSON" oder "gib das Ergebnis strukturiert zurück" enthalten, außer der Originalprompt verlangt das ausdrücklich."""
 
 def parse_analysis(raw, original_prompt=""):
     warning = None
@@ -31,7 +31,7 @@ def analyze_with_ollama(prompt: str, service: OllamaService) -> tuple[dict, str 
     # Auch der Fallback-optimized_prompt bleibt maskiert, damit die Antwort nie
     # Klartext als "optimierten" Prompt ausweist.
     redacted = redact_sensitive(prompt)
-    raw = service.generate(redacted, SYSTEM_PROMPT)
+    raw = service.generate(redacted, SYSTEM_PROMPT, json_mode=True)
     result, warning = parse_analysis(raw, redacted)
     if redacted != prompt:
         warning = f"{warning} {REDACTION_NOTICE}" if warning else REDACTION_NOTICE

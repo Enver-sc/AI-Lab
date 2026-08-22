@@ -1,7 +1,7 @@
 from cryptography.fernet import Fernet
 from app.services.token_service import estimate_tokens
 from app.services.compliance_service import inspect_prompt, redact_sensitive
-from app.services.cost_service import estimate_cost, estimate_electricity_cost
+from app.services.cost_service import estimate_cost
 from app.services.model_catalog import MODELS
 from app.services.sustainability_service import estimate_sustainability
 from app.services.recommendation_service import recommend
@@ -27,9 +27,6 @@ def test_natural_language_password_is_detected_and_masked():
 
 def test_cost():
     assert estimate_cost(1_000_000,500_000,{"input_cost":2,"output_cost":4})==4
-
-def test_electricity_cost():
-    assert estimate_electricity_cost(2.0, 0.35) == 0.7
 
 def test_co2():
     assert estimate_sustainability(1000,1000,{"input_energy":.01,"output_energy":.02},100)["co2_grams"]==3
