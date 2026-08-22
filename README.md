@@ -2,7 +2,7 @@
 
 Eine ausführliche Erklärung mit Architektur-, Ablauf-, Compliance-, Datenbank- und Sicherheitsdiagrammen befindet sich in der [technischen Dokumentation](docs/TECHNISCHE_DOKUMENTATION.md).
 
-Lokales Flask-MVP zur Vorabanalyse von Prompts. Ollama liefert möglichst eine strukturierte lokale Analyse; lokale Regeln ergänzen Compliance-Funde, Token-, Kosten-, Energie-, CO₂- und Dauer-Schätzungen sowie eine nachvollziehbare Modellempfehlung. Energie/CO₂/Wasser/Ressourcenverbrauch werden, wo konfiguriert, über [EcoLogits](docs/ECOLOGITS_INTEGRATION.md) berechnet; ohne passende Konfiguration greift eine einfache Fallback-Formel. Zusätzlich zum Anbieterpreis ("Kosten", bei lokalen Modellen immer 0 €) wird eine unabhängige, geschätzte Stromkosten-Kennzahl aus dem geschätzten Energieverbrauch angezeigt (`ELECTRICITY_PRICE_EUR_PER_KWH`).
+Lokales Flask-MVP zur Vorabanalyse von Prompts. Ollama liefert möglichst eine strukturierte lokale Analyse; lokale Regeln ergänzen Compliance-Funde, Token-, Kosten-, Energie-, CO₂- und Dauer-Schätzungen sowie eine nachvollziehbare Modellempfehlung. Energie/CO₂/Wasser/Ressourcenverbrauch werden, wo konfiguriert, über [EcoLogits](docs/ECOLOGITS_INTEGRATION.md) berechnet; für den tatsächlichen Versand an einen lokalen Ollama-Provider ohne passende EcoLogits-Konfiguration greift ersatzweise eine eigene CPU-Auslastungsformel (`LOCAL_CPU_TDP_WATT`), sonst eine einfache Fallback-Formel. Die Weiterentwicklung dieser Schätzlogik (Live-Versand-Schätzung `/api/estimate-footprint`, bildhafte Darstellung, EcoLogits-Fallback-Stufen) ist in [`CARBON_FOOTPRINT_REDESIGN.md`](docs/CARBON_FOOTPRINT_REDESIGN.md) dokumentiert — eine zwischenzeitlich geprüfte CodeCarbon-Integration wurde dort zugunsten der eigenen Formel wieder verworfen.
 
 ## Architektur
 
@@ -48,7 +48,7 @@ ollama pull gemma4
 ollama serve
 ```
 
-`OLLAMA_MODEL`, `OLLAMA_BASE_URL` und `OLLAMA_TIMEOUT_SECONDS` steuern die Integration. `OLLAMA_ANALYSIS_TIMEOUT_SECONDS=0` lässt die lokale Dashboard-Analyse ohne Zeitlimit laufen; ein positiver Wert setzt stattdessen ein Limit in Sekunden. Ohne Ollama startet das Gateway weiterhin. `/api/ollama/status` meldet Status und Modelle.
+`OLLAMA_MODEL`, `OLLAMA_BASE_URL` und `OLLAMA_TIMEOUT_SECONDS` steuern die Integration. `OLLAMA_ANALYSIS_TIMEOUT_SECONDS=0` lässt die lokale Dashboard-Analyse ohne Zeitlimit laufen; ein positiver Wert setzt stattdessen ein Limit in Sekunden. Ohne Ollama startet das Gateway weiterhin. `/api/ollama/status` meldet Status und Modelle. `LOCAL_CPU_TDP_WATT` (optional, leer = deaktiviert) aktiviert eine grobe CPU-Auslastungsformel für Energie/CO₂ bei lokalen Ollama-Sends, wenn EcoLogits dafür keinen Wert liefert.
 
 ## Start, Datenbank und Tests
 
@@ -57,9 +57,10 @@ SQLite und Tabellen werden beim ersten Start automatisch im `instance`-Verzeichn
 ```bash
 flask --app app run --debug
 pytest
+flask calibrate-ratio
 ```
 
-Dashboard: <http://127.0.0.1:5000>, Provider: `/settings/providers`.
+Dashboard: <http://127.0.0.1:5000>, Provider: `/settings/providers`. `flask calibrate-ratio` schlägt einen kalibrierten `EXPECTED_OUTPUT_RATIO`-Wert aus echten `UsageLog`-Daten vor (Mindeststichprobe 20 erfolgreiche Sends, `ENABLE_PROMPT_LOGGING=true` nötig); ändert nichts automatisch, die Übernahme in `.env` bleibt manuell.
 
 ## Provider und Sicherheit
 
@@ -77,8 +78,8 @@ Konfiguration: `OLLAMA_GUARDIAN_MODEL` bestimmt das Modell (Standard `granite4.1
 
 ## API
 
-HTML: `GET /`, `/settings/providers`, `/privacy`. JSON: `POST /api/analyze`, `/api/optimize`, `/api/send`, `/api/compliance/check` (Stufe-1-Vorabprüfung von Nachricht plus Chatverlauf, genutzt von der Mini-Ampel im Chat); Provider-CRUD samt Test/Modellen; Ollama-Status/Modelle und `/api/usage/summary`. `/api/analyze` liefert bei abweichendem Optimierungsvorschlag zusätzlich `optimized` (dieselben Kennzahlen für den optimierten Prompt); `/api/send` liefert die real gemessene `sustainability`. Vor dem Aufruf des lokalen Analyse-/Optimierungsmodells maskieren `/api/analyze` und `/api/optimize` erkannte sensible Werte (z. B. IBAN, Kreditkartennummer) per `redact_sensitive`; Compliance-Prüfung und Trefferanzeige arbeiten weiter auf dem Original, und das `warning`-Feld weist auf die Maskierung hin. Platzhalter bleiben im optimierten Prompt sichtbar und werden nicht zurückgetauscht.
+HTML: `GET /`, `/settings/providers`, `/privacy`, `/info`. JSON: `POST /api/analyze`, `/api/estimate-footprint`, `/api/optimize`, `/api/send`, `/api/compliance/check` (Stufe-1-Vorabprüfung von Nachricht plus Chatverlauf, genutzt von der Mini-Ampel im Chat); Provider-CRUD samt Test/Modellen; Ollama-Status/Modelle und `/api/usage/summary`. `/api/send` liefert die real gemessene `sustainability`. Vor dem Aufruf des lokalen Analyse-/Optimierungsmodells maskieren `/api/analyze` und `/api/optimize` erkannte sensible Werte (z. B. IBAN, Kreditkartennummer) per `redact_sensitive`; Compliance-Prüfung und Trefferanzeige arbeiten weiter auf dem Original, und das `warning`-Feld weist auf die Maskierung hin. Platzhalter bleiben im optimierten Prompt sichtbar und werden nicht zurückgetauscht.
 
 ## Einschränkungen
 
-CO₂-, Energie-, Kosten- und Dauerwerte sind konfigurierbare Beispielschätzungen, keine wissenschaftliche Messung, Abrechnung oder Garantie. Die Compliance-Prüfung ist keine Rechtsberatung. DNS-Rebinding kann ein MVP nicht vollständig ausschließen. Streaming, OAuth und providerspezifische Abweichungen sind nicht enthalten. Externe Integrationen werden in Tests gemockt. Der CO₂-Vergleich zwischen Original- und optimiertem Prompt beruht auf einer zusätzlichen Annahme (nicht Teil von EcoLogits): dass ein kürzerer Prompt zu einer proportional kürzeren Antwort führt — EcoLogits' Formel selbst hängt nur von der erwarteten Ausgabelänge ab, nicht vom Prompt.
+CO₂-, Energie-, Kosten- und Dauerwerte sind konfigurierbare Beispielschätzungen, keine wissenschaftliche Messung, Abrechnung oder Garantie. Die Compliance-Prüfung ist keine Rechtsberatung. DNS-Rebinding kann ein MVP nicht vollständig ausschließen. Streaming, OAuth und providerspezifische Abweichungen sind nicht enthalten. Externe Integrationen werden in Tests gemockt.

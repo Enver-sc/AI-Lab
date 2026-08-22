@@ -65,6 +65,28 @@ sie ohnehin geändert werden, Hints ergänzen.
 - Verändernde API-Aufrufe brauchen CSRF-Schutz (`X-CSRF-Token`), wie bei bestehenden
   Endpunkten.
 
+## Barrierefreiheit (WCAG / EN 301 549 — gezielter Light-Check, kein Vollaudit)
+
+Kein formales Konformitäts-Audit, aber bei UI-Änderungen auf folgende, in
+`tests/test_accessibility.py` automatisiert geprüfte Punkte achten:
+
+- **Keine Blitz-/Flacker-Effekte** (WCAG 2.3.1): neue Animationen/Übergänge
+  dürfen nicht wiederholt/blinkend sein (max. 3 Wiederholungen pro Sekunde,
+  im Zweifel eine einmalige, sanfte Transition statt einer Schleife).
+- **Neue Farb-Tokens in `:root` (`style.css`)** müssen einen Kontrast von
+  mindestens 4,5:1 gegen die Flächen behalten, auf denen sie als Text
+  eingesetzt werden (`test_text_color_combinations_meet_wcag_aa_contrast`
+  prüft das automatisch für alle bestehenden Text-auf-Hintergrund-Paare).
+- **Farbe nie als einziger Bedeutungsträger** (WCAG 1.4.1): neue
+  farbcodierte Zustände (Ampeln, Ring-/Segmentfarben o. Ä.) brauchen
+  zusätzlich Text, Icon oder Position als Unterscheidungsmerkmal.
+- **`prefers-reduced-motion: reduce` respektieren** — neue Transitions/
+  Animationen in dieses bestehende Media-Query-Muster in `style.css`
+  aufnehmen, nicht eigenständig danebensetzen.
+- **Fokus-Sichtbarkeit nicht unterdrücken** — kein `outline:none`/`outline:0`
+  ohne einen mindestens gleichwertigen eigenen `:focus`-Stil (aktuell wird
+  bewusst der native Browser-Fokusring genutzt).
+
 ## Tests
 
 - pytest, externe Aufrufe (Ollama, Provider-APIs) werden gemockt, keine echten

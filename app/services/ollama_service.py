@@ -12,9 +12,12 @@ class OllamaService:
             response.raise_for_status(); data = response.json()
             return [item.get("name") for item in data.get("models", []) if item.get("name")]
         except (requests.RequestException, ValueError) as exc: raise OllamaError(f"Ollama ist nicht erreichbar oder antwortet ungültig: {exc}") from exc
-    def generate(self, prompt, system=""):
+    def generate(self, prompt: str, system: str = "", json_mode: bool = False) -> str:
+        payload = {"model": self.model, "prompt": prompt, "system": system, "stream": False}
+        if json_mode:
+            payload["format"] = "json"
         try:
-            response = self.http.post(f"{self.base_url}/api/generate", json={"model":self.model,"prompt":prompt,"system":system,"stream":False,"format":"json"}, timeout=self.timeout)
+            response = self.http.post(f"{self.base_url}/api/generate", json=payload, timeout=self.timeout)
             if response.status_code == 404: raise OllamaError(f"Ollama-Modell '{self.model}' wurde nicht gefunden.")
             response.raise_for_status(); data = response.json()
             if not isinstance(data.get("response"), str): raise OllamaError("Ollama-Antwort enthält kein gültiges Textfeld.")

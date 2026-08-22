@@ -10,6 +10,8 @@ def create_app(config_object=Config):
     app.config.from_object(config_object)
     app.config.from_prefixed_env()
     app.instance_path and __import__("os").makedirs(app.instance_path, exist_ok=True)
+    from .services.version_service import get_app_version
+    app.config["APP_VERSION"] = get_app_version()
     db.init_app(app)
     from .routes.main import main_bp
     from .routes.api import api_bp
@@ -42,6 +44,23 @@ def create_app(config_object=Config):
     def too_large(_): return jsonify(error="Anfrage ist zu groß."), 413
     @app.errorhandler(404)
     def not_found(_): return jsonify(error="Nicht gefunden."), 404
+
+    @app.cli.command("calibrate-ratio")
+    def calibrate_ratio_command():
+        """Schlägt einen EXPECTED_OUTPUT_RATIO-Wert aus echten UsageLog-Daten vor."""
+        from .services.ratio_calibration_service import calibrate_expected_output_ratio
+        result = calibrate_expected_output_ratio()
+        current = app.config["EXPECTED_OUTPUT_RATIO"]
+        if not result["sufficient"]:
+            print(f"Zu wenig Daten für eine verlässliche Kalibrierung: {result['sample_size']} von "
+                  f"mindestens {result['min_samples']} erfolgreichen Sends vorhanden.")
+            print(f"EXPECTED_OUTPUT_RATIO bleibt unverändert: {current}")
+            return
+        print(f"Stichprobe: {result['sample_size']} erfolgreiche Sends.")
+        print(f"Aktueller EXPECTED_OUTPUT_RATIO: {current}")
+        print(f"Vorgeschlagener EXPECTED_OUTPUT_RATIO (Median): {result['suggested_ratio']}")
+        print("Zum Übernehmen EXPECTED_OUTPUT_RATIO in .env manuell anpassen.")
+
     with app.app_context(): db.create_all()
     ensure_schema_upgrades(app)
     return app

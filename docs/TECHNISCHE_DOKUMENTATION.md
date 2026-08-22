@@ -66,7 +66,7 @@ flowchart TB
 | App-Factory | `app/__init__.py` | Initialisiert Flask, Datenbank, Blueprints, CSRF und Security Header |
 | Datenbankmodelle | `app/models.py` | Provider-Konfigurationen und optionale Nutzungslogs |
 | API-Routen | `app/routes/api.py` | Analyse, Versand, Providerverwaltung und Statusendpunkte |
-| HTML-Routen | `app/routes/main.py` | Dashboard und Datenschutzseite |
+| HTML-Routen | `app/routes/main.py` | Dashboard, Datenschutz- und Info-Seite |
 | Einstellungen | `app/routes/settings.py` | Provider-Einstellungsseite |
 | Compliance | `app/services/compliance_service.py` | Regex-, Schlüsselwort- und Maskierungsregeln |
 | Ollama-Analyse | `app/services/analysis_service.py` | System-Prompt, JSON-Validierung und sichere Standardwerte |
@@ -75,6 +75,7 @@ flowchart TB
 | Empfehlung | `app/services/recommendation_service.py` | Regelbasierte Modellwahl |
 | Schätzwerte | `app/services/cost_service.py`, `sustainability_service.py` | Kosten-, Energie-, CO₂- und Dauerberechnung (Fallback-Formel) |
 | EcoLogits-Anbindung | `app/services/ecologits_service.py` | Methodikbasierte Energie-/CO₂-/Wasser-/ADPe-Berechnung, siehe [`ECOLOGITS_INTEGRATION.md`](ECOLOGITS_INTEGRATION.md) |
+| Lokale Energie-Schätzung | `app/services/local_energy_service.py` | CPU-Auslastungsformel für den lokalen Ollama-Sendefall (Fallback, wenn EcoLogits keinen Wert liefert) |
 | Modellkatalog | `app/services/model_catalog.py` | Konfigurierbare Demo-Modelle und Faktoren |
 | Verschlüsselung | `app/services/encryption_service.py` | Fernet-Verschlüsselung und Maskierung von API-Schlüsseln |
 | SSRF-Schutz | `app/services/url_security.py` | Prüft Provider-URLs und blockiert interne Netze |
@@ -120,16 +121,25 @@ Die Regeln liegen in `app/services/compliance_service.py`.
 
 ### 5.1 Formatbasierte Regeln
 
-`PATTERNS` enthält reguläre Ausdrücke für:
+`PATTERNS` enthält reine Regex-Erkennung (ohne weitere Prüfung) für:
 
 - E-Mail-Adressen,
-- Telefonnummern,
-- IBAN-ähnliche Zeichenfolgen,
 - API-Schlüssel,
 - Bearer Tokens,
 - private Schlüssel,
-- Klartext-Passwörter,
-- potenzielle Kreditkartennummern.
+- Klartext-Passwörter.
+
+`VALIDATED_PATTERNS` erkennt zusätzlich Kandidaten per Regex, verwirft aber
+alle, die eine zugehörige Prüfsumme bzw. Strukturregel nicht bestehen — das
+vermeidet Fehlalarme bei zufälligen Ziffernfolgen (Bestellnummern,
+Seriennummern, Daten):
+
+- IBAN (Mod-97-Prüfsumme, ISO 13616, unterstützte Länderlängen in
+  `IBAN_LENGTHS`),
+- Kreditkartennummer (Luhn-Algorithmus),
+- Deutsche Steuer-ID (Prüfziffer nach ISO 7064 / MOD 11,10),
+- Telefonnummer (Ziffernlängen-Heuristik, schließt Datums- und
+  Segment-Muster wie `01/02/2023` explizit aus).
 
 ### 5.2 Inhaltsbasierte Regeln
 
@@ -139,7 +149,8 @@ Die Regeln liegen in `app/services/compliance_service.py`.
 - Finanzdaten,
 - vertrauliche Informationen,
 - schädliche oder möglicherweise rechtswidrige Anforderungen,
-- Urheberrechtsrisiken.
+- Urheberrechtsrisiken,
+- Geheimnisse im Klartext.
 
 Jede Regel besitzt einen Punkteabzug. Die Berechnung beginnt bei 100:
 
@@ -226,29 +237,20 @@ Energie = Input-Token / 1.000 × Input-Energiefaktor
 CO₂e = Energie × CO₂-Intensität
 ```
 
-**Vergleich Original- vs. optimierter Prompt**: `/api/analyze` berechnet bei abweichendem
-Optimierungsvorschlag (`analysis.optimized_prompt`) dieselben Kennzahlen zusätzlich für den
-optimierten Prompt (`optimized`-Schlüssel in der Antwort). Da EcoLogits' Formel ausschließlich
-von der Ausgabe-Tokenanzahl abhängt, nicht vom Prompt selbst, wäre der CO₂-Vergleich ohne
-weitere Annahme immer identisch. `analysis_payload()`/`optimized_payload()` in `app/routes/api.py`
-skalieren daher die erwartete Ausgabelänge proportional zum Verhältnis der Prompt-Tokenanzahlen
-(`output_opt = output × tokens_opt / tokens`) — eine explizit dokumentierte Heuristik, kein Teil
-der EcoLogits-Methodik. Die dritte Vergleichskachel im Dashboard ("Finale CO₂e-Bilanz") zeigt die
-vorzeichenbehaftete prozentuale Differenz — positiv (rot) bedeutet mehr CO₂e durch die
-Optimierung, negativ (grün) weniger.
+Für den tatsächlichen Versand an einen lokalen Ollama-Provider gibt es einen
+dritten, eigenständigen Pfad: `app/services/local_energy_service.py`
+(`measure_local_generation`) schätzt Energie/CO₂ aus der tatsächlichen
+CPU-Auslastung während des Sendevorgangs (TDP × Auslastung × Dauer, konfiguriert
+über `LOCAL_CPU_TDP_WATT`) — als Fallback, wenn weder ein bestätigter
+EcoLogits-Anbieter noch manuelle Parameter für das lokale Modell hinterlegt
+sind. Liefert nur Energie/CO₂, nie Wasser/ADPe (methodisch nicht ableitbar aus
+einer reinen CPU-Auslastungsmessung). Details siehe
+[`CARBON_FOOTPRINT_REDESIGN.md`](CARBON_FOOTPRINT_REDESIGN.md), Nachtrag 24.
 
-### Stromkosten
-
-Der Anbieterpreis ("Kosten") ist bei lokalen Modellen im Katalog immer `0`, da es keine
-API-Abrechnung gibt — echter Strom wird trotzdem verbraucht. `cost_service.estimate_electricity_cost`
-multipliziert den geschätzten Energieverbrauch (`sustainability.energy_kwh`, aus EcoLogits oder der
-Fallback-Formel) mit dem konfigurierbaren `ELECTRICITY_PRICE_EUR_PER_KWH` (Default `0.35`, grober
-Richtwert für einen deutschen Haushaltsstrompreis) und liefert `sustainability.electricity_cost_eur`
-als eigenständige, vom Anbieterpreis unabhängige Kennzahl — **nur für lokale Modelle**
-(`model["hosting_region"] == "Lokal"` bzw. `provider.provider_type == "ollama"`), sonst `null`.
-Bei Cloud-/EU-Modellen deckt der Anbieterpreis deren Stromkosten bereits ab; eine zusätzliche,
-mit dem Haushaltsstrompreis geschätzte Zahl würde dort einen Betrag suggerieren, den der Nutzer
-nicht selbst zahlt.
+Ein früherer Vorher/Nachher-Vergleich zwischen Original- und optimiertem Prompt sowie eine
+separate "Stromkosten"-Kennzahl für lokale Modelle wurden wieder entfernt (strukturell
+irreführend bzw. Ersatz über CodeCarbon vorgesehen) — Details und Begründung siehe
+[`CARBON_FOOTPRINT_REDESIGN.md`](CARBON_FOOTPRINT_REDESIGN.md).
 
 ### Dauer
 
@@ -369,7 +371,9 @@ Zwischen den Tabellen besteht bewusst kein Fremdschlüssel. Nutzungslogs bleiben
 | GET | `/` | Dashboard |
 | GET | `/settings/providers` | Providerverwaltung |
 | GET | `/privacy` | Datenschutzhinweise |
+| GET | `/info` | Version, Autoren, Disclaimer |
 | POST | `/api/analyze` | Prompt lokal analysieren und Werte schätzen |
+| POST | `/api/estimate-footprint` | Fußabdruck für aktuellen Text/Provider neu schätzen, ohne Ollama-Aufruf oder Versand |
 | POST | `/api/optimize` | Optimierten Prompt ermitteln |
 | POST | `/api/send` | Prompt nach Bestätigung versenden |
 | GET/POST | `/api/providers` | Provider auflisten oder anlegen |

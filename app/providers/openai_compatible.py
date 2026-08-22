@@ -1,3 +1,4 @@
+import json
 import requests
 from .base import BaseProvider, ProviderError
 
@@ -8,6 +9,9 @@ class OpenAICompatibleProvider(BaseProvider):
     def headers(self):
         result = {"Accept":"application/json","Content-Type":"application/json"}
         if self.api_key: result["Authorization"] = f"Bearer {self.api_key}"
+        try: custom = json.loads(self.config.custom_headers_json or "{}")
+        except (TypeError, ValueError): custom = {}
+        if isinstance(custom, dict): result.update(custom)
         return result
     def _request(self, method, path, **kwargs):
         try:

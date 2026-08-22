@@ -5,10 +5,12 @@ from ..extensions import db
 from ..models import ProviderConfiguration, UsageLog
 from ..services.analysis_service import analyze_with_ollama, parse_analysis
 from ..services.compliance_service import inspect_chat_history, inspect_prompt, redact_sensitive
-from ..services.cost_service import estimate_cost, estimate_electricity_cost
+from ..services.cost_service import estimate_cost
 from ..services.ecologits_service import compute_impacts
 from ..services.encryption_service import EncryptionService, EncryptionUnavailable, mask_secret
 from ..services.guardian_service import apply_semantic_check
+from ..services.local_energy_service import measure_local_generation
+from ..services.model_catalog import MODELS
 from ..services.ollama_service import OllamaError, OllamaService
 from ..services.recommendation_service import recommend
 from ..services.sustainability_service import estimate_duration, estimate_sustainability
@@ -91,39 +93,7 @@ def sustainability_for(tokens, output, model, duration, carbon_intensity):
     eco_result, eco_warning = compute_impacts(
         output, duration["max_seconds"], provider=None, catalog_model=model, app_config=current_app.config
     )
-    merged = {**formula, **(eco_result or {})}
-    # Nur fuer lokale Modelle: der Anbieterpreis ("Kosten") ist bei Cloud-/EU-Modellen der tatsaechlich
-    # zu zahlende Preis (inkl. der -- meist guenstigeren -- Stromkosten des Anbieters), waehrend bei
-    # lokalen Modellen "Kosten" immer 0 ist, obwohl real Strom verbraucht wird. Fuer Cloud/EU wuerde
-    # eine zusaetzliche, mit dem Haushaltsstrompreis geschaetzte "Stromkosten"-Zahl einen Betrag
-    # suggerieren, den der Nutzer nicht selbst zahlt.
-    merged["electricity_cost_eur"] = (
-        estimate_electricity_cost(merged["energy_kwh"], current_app.config["ELECTRICITY_PRICE_EUR_PER_KWH"])
-        if model.get("hosting_region") == "Lokal" else None
-    )
-    return merged, eco_warning
-
-def optimized_payload(optimized_prompt, analysis, compliance, tokens, output, mode, carbon_intensity):
-    tokens_opt = estimate_tokens(optimized_prompt)
-    # Heuristische Annahme, nicht Teil der EcoLogits-Methodik: EcoLogits' Formel haengt nur von
-    # der Anzahl der Ausgabe-Token ab, nicht vom Prompt selbst -- ohne eine Annahme dazu waere
-    # der CO2-Vergleich original/optimiert immer identisch. Wir nehmen an, dass ein proportional
-    # kuerzerer Prompt tendenziell zu einer proportional kuerzeren Antwort fuehrt.
-    output_opt = max(1, round(output * tokens_opt / tokens))
-    model_opt, reason_opt = recommend(analysis, compliance, tokens_opt, mode)
-    # complexity_score stammt aus der Ollama-Analyse des Original-Prompts; der optimierte
-    # Prompt wird nicht erneut eigenstaendig bewertet, Dauer/Modellwahl sind also Naeherungen.
-    duration_opt = estimate_duration(tokens_opt, output_opt, analysis["complexity_score"], model_opt)
-    sustainability_opt, sustainability_opt_warning = sustainability_for(tokens_opt, output_opt, model_opt, duration_opt, carbon_intensity)
-    return {
-        "prompt_tokens": tokens_opt,
-        "expected_output_tokens": output_opt,
-        "recommendation": {**model_opt, "reason": reason_opt},
-        "estimated_cost": estimate_cost(tokens_opt, output_opt, model_opt),
-        "sustainability": sustainability_opt,
-        "sustainability_warning": sustainability_opt_warning,
-        "duration": duration_opt,
-    }
+    return {**formula, **(eco_result or {})}, eco_warning
 
 def analysis_payload(prompt, mode="auto"):
     analysis_timeout = current_app.config.get("OLLAMA_ANALYSIS_TIMEOUT_SECONDS", 0)
@@ -141,23 +111,125 @@ def analysis_payload(prompt, mode="auto"):
     analysis["contains_personal_data"] |= compliance["contains_personal_data"]
     analysis["contains_confidential_data"] |= compliance["contains_confidential_data"]
     analysis["compliance_score"] = min(analysis["compliance_score"], compliance["score"])
-    tokens = estimate_tokens(prompt); output = current_app.config["DEFAULT_EXPECTED_OUTPUT_TOKENS"]
+    tokens = estimate_tokens(prompt)
+    # Ausgabelaenge proportional zur Eingabelaenge statt fixer Konstante, siehe
+    # CARBON_FOOTPRINT_REDESIGN.md ("Kernproblem: woran soll sich eine Zahl ueberhaupt
+    # bewegen?") -- sonst liefert ein erneutes Analysieren des optimierten (laengeren)
+    # Prompts identische Sustainability-Kacheln, da EcoLogits nur von der Ausgabe abhaengt.
+    output = max(1, round(tokens * current_app.config["EXPECTED_OUTPUT_RATIO"]))
     model, reason = recommend(analysis, compliance, tokens, mode)
     carbon_intensity = current_app.config["CARBON_INTENSITY_G_PER_KWH"]
     duration = estimate_duration(tokens, output, analysis["complexity_score"], model)
     sustainability, sustainability_warning = sustainability_for(tokens, output, model, duration, carbon_intensity)
-    payload = {"analysis":analysis,"compliance":compliance,"input_tokens":tokens,"expected_output_tokens":output,"recommendation":{**model,"reason":reason},"estimated_cost":estimate_cost(tokens,output,model),"sustainability":sustainability,"sustainability_warning":sustainability_warning,"duration":duration,"warning":warning,"estimates_notice":"Konfigurierbare MVP-Schätzwerte; keine wissenschaftliche Messung oder Preisgarantie."}
-    optimized_prompt = analysis["optimized_prompt"].strip()
-    # Auch das blosse Echo des maskierten Prompts ist keine Optimierung — sonst
-    # entstuende ein Vergleichsblock, dessen Ersparnis nur aus der Maskierung stammt.
-    if optimized_prompt and optimized_prompt not in (prompt.strip(), redact_sensitive(prompt).strip()):
-        payload["optimized"] = optimized_payload(optimized_prompt, analysis, compliance, tokens, output, mode, carbon_intensity)
-    return payload
+    # Kein CO2-Vergleich original vs. optimierter Prompt mehr (siehe CARBON_FOOTPRINT_REDESIGN.md):
+    # EcoLogits' Formel haengt nur von der Ausgabe-Tokenanzahl ab, nicht vom Prompt selbst, und
+    # Ollamas Optimierung zielt auf Klarheit/Praezision statt Kuerze -- der Vergleich war strukturell
+    # fast immer negativ fuer den optimierten Prompt. analysis["optimized_prompt"] bleibt als reiner
+    # Formulierungsvorschlag erhalten, nur ohne eigene Kosten-/Nachhaltigkeitsberechnung dafuer.
+    return {"analysis":analysis,"compliance":compliance,"input_tokens":tokens,"expected_output_tokens":output,"recommendation":{**model,"reason":reason},"estimated_cost":estimate_cost(tokens,output,model),"sustainability":sustainability,"sustainability_warning":sustainability_warning,"duration":duration,"warning":warning,"estimates_notice":"Konfigurierbare MVP-Schätzwerte; keine wissenschaftliche Messung oder Preisgarantie."}
 
 @api_bp.post("/analyze")
 def analyze():
     try: data, prompt = prompt_from_body(); return jsonify(analysis_payload(prompt, data.get("mode","auto")))
     except ValueError as exc: return error(str(exc))
+
+def estimate_footprint_payload(text, model_class, complexity_score):
+    # Schlanker Recompute fuer Option #2 aus CARBON_FOOTPRINT_REDESIGN.md: reine
+    # Dict-Suche im bestehenden Modell-Katalog statt erneuter Ollama-Analyse -- die
+    # Modellklasse bleibt die zuletzt empfohlene, es wird nicht neu klassifiziert.
+    model = next((m.copy() for m in MODELS if m["model_class"] == model_class), None)
+    if model is None:
+        raise ValueError("Unbekannte Modellklasse.")
+    tokens = estimate_tokens(text)
+    output = max(1, round(tokens * current_app.config["EXPECTED_OUTPUT_RATIO"]))
+    carbon_intensity = current_app.config["CARBON_INTENSITY_G_PER_KWH"]
+    duration = estimate_duration(tokens, output, complexity_score, model)
+    sustainability, sustainability_warning = sustainability_for(tokens, output, model, duration, carbon_intensity)
+    return {
+        "input_tokens": tokens,
+        "expected_output_tokens": output,
+        "estimated_cost": estimate_cost(tokens, output, model),
+        "duration": duration,
+        "sustainability": sustainability,
+        "sustainability_warning": sustainability_warning,
+    }
+
+# Request-Latenz fuer die Fussabdruck-Vorschau einer noch nicht gesendeten Folgenachricht --
+# es gibt noch keine echte Latenz zu messen, daher ein fester Platzhalter (nur EcoLogits-intern
+# relevant, kein sichtbarer Wert).
+ESTIMATE_REQUEST_LATENCY_SECONDS = 2.0
+
+def estimate_footprint_for_provider(text, provider_id, model_name, model_class: str | None = None):
+    # Fuer Folgeprompts (#chat-input): der Provider ist bereits aktiv gewaehlt, siehe
+    # CARBON_FOOTPRINT_REDESIGN.md "Server-Funktion" -- nutzt dessen echte ecologits_provider-/
+    # eco_active_params_b-Werte statt eines Katalogeintrags, analog zu send(), nur ohne Versand.
+    provider = ProviderConfiguration.query.filter_by(id=provider_id, enabled=True).first()
+    if not provider:
+        raise ValueError("Aktiver Provider nicht gefunden.")
+    selected_model = provider.model_name
+    input_cost = provider.input_cost_per_million
+    output_cost = provider.output_cost_per_million
+    impact_provider = provider
+    if provider.provider_type == "anthropic":
+        selected_model = str(model_name or "").strip()
+        model_config = ANTHROPIC_MODELS.get(selected_model)
+        if not model_config:
+            raise ValueError("Unbekanntes oder nicht erlaubtes Claude-Modell.")
+        input_cost = model_config["input_cost"]
+        output_cost = model_config["output_cost"]
+        impact_provider = copy.copy(provider)
+        impact_provider.model_name = selected_model
+    tokens = estimate_tokens(text)
+    output = max(1, round(tokens * current_app.config["EXPECTED_OUTPUT_RATIO"]))
+    eco_result, sustainability_warning = compute_impacts(
+        output, ESTIMATE_REQUEST_LATENCY_SECONDS, provider=impact_provider, catalog_model=None, app_config=current_app.config
+    )
+    # Reale Provider-Datensaetze haben oft unvollstaendige EcoLogits-Angaben (z. B. nur
+    # Gesamt-, keine Aktivparameter fuer ein lokales Ollama-Modell) -- compute_impacts liefert
+    # dann None. Fallback auf dieselbe grobe Formel wie bei der Katalog-basierten Analyse
+    # (sustainability_for()), statt hart auf "nicht verfuegbar" zu fallen.
+    catalog_entry = next((m for m in MODELS if m["model_class"] == model_class), None)
+    if catalog_entry is not None:
+        carbon_intensity = current_app.config["CARBON_INTENSITY_G_PER_KWH"]
+        formula = estimate_sustainability(tokens, output, catalog_entry, carbon_intensity)
+        sustainability = {**formula, **(eco_result or {})}
+        if eco_result is None:
+            sustainability["mode"] = "formula"
+    else:
+        sustainability = eco_result
+    return {
+        "input_tokens": tokens,
+        "expected_output_tokens": output,
+        "estimated_cost": round(tokens / 1_000_000 * input_cost + output / 1_000_000 * output_cost, 6),
+        "sustainability": sustainability,
+        "sustainability_warning": sustainability_warning,
+    }
+
+@api_bp.post("/estimate-footprint")
+def estimate_footprint():
+    data = request.get_json(silent=True) or {}
+    text = data.get("text", "")
+    if not isinstance(text, str) or not text.strip():
+        return error("Bitte einen Text angeben.")
+    if len(text) > current_app.config["MAX_PROMPT_LENGTH"]:
+        return error("Der Text überschreitet die maximale Länge.")
+    try:
+        if data.get("provider_id") is not None:
+            try:
+                provider_id = int(data["provider_id"])
+            except (TypeError, ValueError):
+                return error("Ungültige provider_id.")
+            return jsonify(estimate_footprint_for_provider(text.strip(), provider_id, data.get("model_name"), data.get("model_class")))
+        model_class = data.get("model_class")
+        if not isinstance(model_class, str) or not model_class:
+            return error("model_class oder provider_id ist erforderlich.")
+        try:
+            complexity_score = max(0, min(100, int(data.get("complexity_score", 35))))
+        except (TypeError, ValueError):
+            complexity_score = 35
+        return jsonify(estimate_footprint_payload(text.strip(), model_class, complexity_score))
+    except ValueError as exc:
+        return error(str(exc))
 @api_bp.post("/optimize")
 def optimize():
     try: _, prompt=prompt_from_body(); result=analysis_payload(prompt); return jsonify(optimized_prompt=result["analysis"]["optimized_prompt"], suggestions=result["analysis"]["optimization_suggestions"], warning=result["warning"])
@@ -209,12 +281,21 @@ def send():
     tokens = sum(estimate_tokens(message["content"]) for message in messages)
     if tokens > context_window: return error("Der Chatverlauf überschreitet das Kontextfenster des Providers.",400)
     started=time.monotonic()
+    local_energy = None
+    local_warning = None
     try:
         provider_client = provider_instance(provider)
         if provider.provider_type == "anthropic":
             answer, usage = provider_client.generate_messages(messages, selected_model)
             tokens = usage["input_tokens"] or tokens
             output = usage["output_tokens"]
+        elif provider.provider_type == "ollama":
+            answer, local_energy, local_warning = measure_local_generation(
+                lambda: provider_client.generate(prompt, selected_model),
+                current_app.config["LOCAL_CPU_TDP_WATT"],
+                current_app.config["CARBON_INTENSITY_G_PER_KWH"],
+            )
+            output = estimate_tokens(answer)
         else:
             answer = provider_client.generate(prompt, selected_model)
             output = estimate_tokens(answer)
@@ -229,14 +310,12 @@ def send():
         impact_provider = copy.copy(provider)
         impact_provider.model_name = selected_model
     eco_result, eco_warning = compute_impacts(output, latency/1000, provider=impact_provider, catalog_model=None, app_config=current_app.config)
-    if eco_result:
-        # provider_type=="ollama" ist im Projekt bereits das etablierte Signal fuer "lokal" (siehe
-        # validate_provider_url's allow_localhost). Fuer Cloud/EU-Provider bleibt der Wert None --
-        # der Anbieterpreis ("estimated_cost") deckt deren tatsaechliche Kosten bereits ab.
-        eco_result["electricity_cost_eur"] = (
-            estimate_electricity_cost(eco_result["energy_kwh"], current_app.config["ELECTRICITY_PRICE_EUR_PER_KWH"])
-            if provider.provider_type == "ollama" else None
-        )
+    if provider.provider_type == "ollama" and eco_result is None:
+        # EcoLogits liefert fuer Ollama nur ein Ergebnis, wenn fuer dieses Modell manuelle
+        # Parameter (eco_active_params_b/eco_total_params_b) hinterlegt sind. Ist das nicht der
+        # Fall (Regelfall bei lokalen Modellen), TDP-Formel-Schaetzung aus der tatsaechlichen
+        # CPU-Auslastung waehrend generate() als Fallback, siehe local_energy_service.py.
+        eco_result, eco_warning = local_energy, local_warning
     co2_grams = eco_result["co2_grams"] if eco_result else 0
     if current_app.config["ENABLE_PROMPT_LOGGING"]:
         db.session.add(UsageLog(prompt_hash=hashlib.sha256(prompt.encode()).hexdigest(),input_tokens=tokens,estimated_output_tokens=output,provider_name=provider.name,model_name=selected_model,estimated_cost=tokens/1e6*input_cost+output/1e6*output_cost,estimated_co2_grams=co2_grams,compliance_score=compliance["score"],request_status="success",latency_ms=latency)); db.session.commit()
