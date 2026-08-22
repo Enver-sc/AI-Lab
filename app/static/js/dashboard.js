@@ -70,7 +70,7 @@
       chat = document.createElement("section");
       chat.id = "chat-continuation";
       chat.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) 260px;align-items:start;gap:20px;margin-top:18px";
-      chat.innerHTML = '<div><h3>Chat fortsetzen</h3><div id="chat-messages" style="display:grid;gap:14px;max-height:620px;overflow:auto;padding-right:8px;margin-bottom:16px"></div><label for="chat-input">Nächste Nachricht</label><textarea id="chat-input" rows="3" placeholder="Schreibe eine Folgefrage …"></textarea><button id="chat-send" class="primary" type="button">Nachricht senden</button></div>'
+      chat.innerHTML = '<div><h3>Chat fortsetzen</h3><div id="chat-messages" style="display:grid;gap:14px;max-height:620px;overflow:auto;padding-right:8px;margin-bottom:16px"></div><label for="chat-input">Nächste Nachricht</label><textarea id="chat-input" rows="3" placeholder="Schreibe eine Folgefrage …"></textarea><button id="chat-send" class="primary" type="button">Nachricht senden</button><div id="chat-compliance" hidden></div></div>'
         + '<aside class="summary" style="position:sticky;top:20px"><h3>Kosten und Nutzung</h3><p>Letzte Runde<br><strong id="chat-turn-cost">$ 0.000000</strong></p><p>Input<br><strong id="chat-input-tokens">0</strong> Token · <strong id="chat-input-cost">$ 0.000000</strong></p><p>Output<br><strong id="chat-output-tokens">0</strong> Token · <strong id="chat-output-cost">$ 0.000000</strong></p><hr><p>Gesamtkosten<br><strong id="chat-total-cost">$ 0.000000</strong></p><p>Gesamttoken<br><strong id="chat-total-tokens">0</strong></p><p>CO₂e gesamt<br><strong id="chat-total-co2">0 g</strong></p></aside>';
       element("#answer").insertAdjacentElement("afterend", chat);
       element("#chat-send").addEventListener("click", continueChat);
@@ -195,6 +195,90 @@
       element("#chat-total-co2").textContent = cumulativeCo2.toFixed(4) + " g";
     }
 
+    function resetChatCompliance() {
+      var box = element("#chat-compliance");
+      if (box) { box.hidden = true; box.innerHTML = ""; }
+    }
+
+    function complianceBadge(check) {
+      var badge = document.createElement("p");
+      var color = check.level === "red" ? "var(--red)" : check.level === "yellow" ? "var(--yellow)" : "var(--green)";
+      badge.style.cssText = "margin:10px 0 4px;font-weight:750;color:" + color;
+      badge.textContent = "Compliance-Prüfung (Nachricht + Verlauf): " + check.score + "/100 · " + check.level.toUpperCase();
+      return badge;
+    }
+
+    function showChatCompliance(check, content) {
+      var box = element("#chat-compliance");
+      box.hidden = false;
+      box.innerHTML = "";
+      box.appendChild(complianceBadge(check));
+      var findings = document.createElement("small");
+      findings.textContent = "Treffer: " + (check.findings.join(", ") || "keine lokalen Treffer");
+      box.appendChild(findings);
+      (check.semantic_findings || []).forEach(function (finding) {
+        var line = document.createElement("small");
+        line.style.display = "block";
+        line.textContent = finding.label + ": " + finding.reason;
+        box.appendChild(line);
+      });
+      if (check.semantic_warning) {
+        var note = document.createElement("small");
+        note.style.display = "block";
+        note.textContent = check.semantic_warning;
+        box.appendChild(note);
+      }
+      if (check.level === "green") {
+        sendChatMessage(content, "");
+        return;
+      }
+      var hint = document.createElement("div");
+      hint.className = "alert warning";
+      hint.style.marginTop = "10px";
+      hint.textContent = check.level === "red"
+        ? "Rote Bewertung: Der Versand ist blockiert, bis du eine frische Begründung (mindestens 10 Zeichen) für genau diese Nachricht angibst."
+        : "Gelbe Bewertung: Diese Nachricht oder der bisherige Verlauf enthält möglicherweise sensible Inhalte. Bitte bewusst entscheiden.";
+      box.appendChild(hint);
+      var reasonInput = null;
+      if (check.level === "red") {
+        var reasonLabel = document.createElement("label");
+        reasonLabel.htmlFor = "chat-override";
+        reasonLabel.textContent = "Begründung für diese Nachricht";
+        reasonInput = document.createElement("textarea");
+        reasonInput.id = "chat-override";
+        reasonInput.rows = 2;
+        reasonInput.placeholder = "Warum darf diese Nachricht trotz roter Bewertung gesendet werden?";
+        box.appendChild(reasonLabel);
+        box.appendChild(reasonInput);
+      }
+      var actions = document.createElement("div");
+      actions.className = "actions";
+      var confirmButton = document.createElement("button");
+      confirmButton.type = "button";
+      confirmButton.className = "primary";
+      confirmButton.textContent = "Bewusst senden";
+      var cancelButton = document.createElement("button");
+      cancelButton.type = "button";
+      cancelButton.textContent = "Abbrechen";
+      actions.appendChild(confirmButton);
+      actions.appendChild(cancelButton);
+      box.appendChild(actions);
+      confirmButton.addEventListener("click", function () {
+        var reason = reasonInput ? reasonInput.value.trim() : "";
+        if (check.level === "red" && reason.length < 10) {
+          toast("Bitte eine Begründung mit mindestens 10 Zeichen angeben.");
+          return;
+        }
+        resetChatCompliance();
+        sendChatMessage(content, reason);
+      });
+      cancelButton.addEventListener("click", function () {
+        resetChatCompliance();
+        element("#chat-send").disabled = false;
+        toast("Senden abgebrochen. Die Nachricht bleibt im Eingabefeld.");
+      });
+    }
+
     async function continueChat() {
       var input = element("#chat-input");
       var content = input.value.trim();
@@ -203,10 +287,25 @@
       if (!selected) { toast("Bitte einen Provider auswählen."); return; }
       var button = element("#chat-send");
       button.disabled = true;
+      resetChatCompliance();
+      try {
+        var check = await api("/api/compliance/check", {method: "POST", body: JSON.stringify({prompt: content, messages: conversation.concat([{role: "user", content: content}])})});
+        showChatCompliance(check, content);
+      } catch (error) {
+        toast(error.message);
+        button.disabled = false;
+      }
+    }
+
+    async function sendChatMessage(content, overrideReason) {
+      var input = element("#chat-input");
+      var button = element("#chat-send");
+      var selected = providers.find(function (p) { return String(p.id) === element("#provider").value; });
+      if (!selected) { toast("Bitte einen Provider auswählen."); button.disabled = false; return; }
       conversation.push({role: "user", content: content});
       appendChatMessage("user", content);
       try {
-        var data = await api("/api/send", {method: "POST", body: JSON.stringify({prompt: content, messages: conversation, provider_id: selected.id, model_name: modelSelect.value, override_reason: element("#override").value})});
+        var data = await api("/api/send", {method: "POST", body: JSON.stringify({prompt: content, messages: conversation, provider_id: selected.id, model_name: modelSelect.value, override_reason: overrideReason})});
         conversation.push({role: "assistant", content: data.answer});
         appendChatMessage("assistant", data.answer, data.actual_cost);
         recordUsage(data);
@@ -305,7 +404,13 @@
       element("#duration").textContent = data.duration.min_seconds + "–" + data.duration.max_seconds + " s";
       element("#compliance").textContent = data.compliance.score + "/100";
       element("#compliance").className = data.compliance.level;
-      element("#compliance-findings").textContent = data.compliance.findings.join(", ") || "Keine lokalen Treffer";
+      var findingsText = data.compliance.findings.join(", ") || "Keine lokalen Treffer";
+      var semantic = data.compliance.semantic_findings || [];
+      if (semantic.length) {
+        findingsText += " · " + semantic.map(function (finding) { return finding.label + ": " + finding.reason; }).join(" · ");
+      }
+      if (data.compliance.semantic_warning) findingsText += " · " + data.compliance.semantic_warning;
+      element("#compliance-findings").textContent = findingsText;
       element("#model").textContent = data.recommendation.display_name;
       element("#reason").textContent = data.recommendation.reason;
       element("#region").textContent = data.recommendation.hosting_region;
@@ -381,6 +486,8 @@
         appendChatMessage("user", prompt.value);
         appendChatMessage("assistant", data.answer, data.actual_cost);
         recordUsage(data);
+        // Begründung gilt nur für genau diesen Versand -- nie stillschweigend wiederverwenden.
+        element("#override").value = "";
         if (element("#discard").checked) { prompt.value = ""; element("#optimized").value = ""; updateCounter(); }
         var summary = "Antwort erhalten mit " + (data.model_used || "dem gewählten Modell") + " (" + data.latency_ms + " ms). ";
         if (data.actual_cost != null) {

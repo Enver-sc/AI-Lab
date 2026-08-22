@@ -17,6 +17,8 @@ class Config:
     OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma4")
     OLLAMA_TIMEOUT_SECONDS = float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "60"))
     OLLAMA_ANALYSIS_TIMEOUT_SECONDS = float(os.getenv("OLLAMA_ANALYSIS_TIMEOUT_SECONDS", "0"))
+    # Leerer Wert deaktiviert die semantische Stufe-2-Prüfung.
+    OLLAMA_GUARDIAN_MODEL = os.getenv("OLLAMA_GUARDIAN_MODEL", "granite4.1-guardian:8b")
     APP_ENCRYPTION_KEY = os.getenv("APP_ENCRYPTION_KEY", "")
     ENABLE_PROMPT_LOGGING = as_bool(os.getenv("ENABLE_PROMPT_LOGGING", "false"))
     MAX_PROMPT_LENGTH = int(os.getenv("MAX_PROMPT_LENGTH", "30000"))

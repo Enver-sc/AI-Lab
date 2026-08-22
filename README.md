@@ -13,7 +13,7 @@ Lokales Flask-MVP zur Vorabanalyse von Prompts. Ollama liefert möglichst eine s
 - `app/models.py`: Provider und optionale, promptfreie Nutzungslogs
 - `tests`: Unit- und Routentests mit gemockten externen Aufrufen
 
-Analyse und Versand sind technisch getrennt. `/api/analyze` ruft keinen externen Provider auf. Versand verlangt eine bewusste Bestätigung im UI und wird bei roter Compliance ohne Begründung serverseitig blockiert.
+Analyse und Versand sind technisch getrennt. `/api/analyze` ruft keinen externen Provider auf. Versand verlangt eine bewusste Bestätigung im UI und wird bei roter Compliance ohne Begründung serverseitig blockiert. Bei Chat-Anfragen prüft der Server jede Nachricht des mitgeschickten Verlaufs; das Gesamtergebnis richtet sich nach der schlechtesten Nachricht, und jede rote Nachricht braucht eine eigene, frische Begründung — auch Folgenachrichten im Chat durchlaufen im UI die bewusste Bestätigung.
 
 ## Installation
 
@@ -69,9 +69,15 @@ Den Anthropic API-Key einmal unter `/settings/providers` eintragen. Dazu einen P
 
 Prompts werden standardmäßig nicht gespeichert. `ENABLE_PROMPT_LOGGING=true` speichert nur SHA-256-Hash, Token-/Modell-/Schätzmetadaten und Status. CSRF-Schutz, Größenlimits, sichere Cookie-Vorgaben, CSP und Eingabevalidierung sind aktiv. Verändernde API-Aufrufe benötigen den Sessionwert als `X-CSRF-Token`.
 
+## Compliance Stufe 2 (semantische Prüfung)
+
+Stufe 1 prüft deterministisch mit Mustern und Prüfsummen (IBAN, Kreditkarte, Schlüssel u. a.). Stufe 2 ergänzt eine semantische Prüfung über ein lokales Guardian-Modell (Ollama): Sie erkennt Datenschutzrisiken im Sinne von DSGVO und KDG auch ohne prüfbare Muster — etwa „Person A aus Abteilung X ist heute krank" (identifizierbare Person plus Gesundheitsbezug). Funde heben die Ampel mindestens auf Gelb und erscheinen als eigene Stufe-2-Flags (`semantic_findings`) mit kurzer Begründung; Rot und das serverseitige Blockieren bleiben allein Sache der deterministischen Stufe 1. Stufe 2 läuft bei der Analyse (`/api/analyze`) und bei der Verlaufsprüfung (`/api/send`, `/api/compliance/check`). Von Stufe 1 erkannte sensible Werte werden — wie bei der Analyse — vor der Übergabe an das Guardian-Modell maskiert.
+
+Konfiguration: `OLLAMA_GUARDIAN_MODEL` bestimmt das Modell (Standard `granite4.1-guardian:8b`, Bezug z. B. per `ollama pull granite4.1-guardian:8b`); ein leerer Wert deaktiviert Stufe 2. Ist das Modell nicht erreichbar oder liefert es keine verwertbare Antwort, läuft alles mit Stufe 1 weiter, und das Ergebnis enthält statt eines Fehlers einen sichtbaren Hinweis (`semantic_warning`).
+
 ## API
 
-HTML: `GET /`, `/settings/providers`, `/privacy`. JSON: `POST /api/analyze`, `/api/optimize`, `/api/send`; Provider-CRUD samt Test/Modellen; Ollama-Status/Modelle und `/api/usage/summary`. `/api/analyze` liefert bei abweichendem Optimierungsvorschlag zusätzlich `optimized` (dieselben Kennzahlen für den optimierten Prompt); `/api/send` liefert die real gemessene `sustainability`. Vor dem Aufruf des lokalen Analyse-/Optimierungsmodells maskieren `/api/analyze` und `/api/optimize` erkannte sensible Werte (z. B. IBAN, Kreditkartennummer) per `redact_sensitive`; Compliance-Prüfung und Trefferanzeige arbeiten weiter auf dem Original, und das `warning`-Feld weist auf die Maskierung hin. Platzhalter bleiben im optimierten Prompt sichtbar und werden nicht zurückgetauscht.
+HTML: `GET /`, `/settings/providers`, `/privacy`. JSON: `POST /api/analyze`, `/api/optimize`, `/api/send`, `/api/compliance/check` (Stufe-1-Vorabprüfung von Nachricht plus Chatverlauf, genutzt von der Mini-Ampel im Chat); Provider-CRUD samt Test/Modellen; Ollama-Status/Modelle und `/api/usage/summary`. `/api/analyze` liefert bei abweichendem Optimierungsvorschlag zusätzlich `optimized` (dieselben Kennzahlen für den optimierten Prompt); `/api/send` liefert die real gemessene `sustainability`. Vor dem Aufruf des lokalen Analyse-/Optimierungsmodells maskieren `/api/analyze` und `/api/optimize` erkannte sensible Werte (z. B. IBAN, Kreditkartennummer) per `redact_sensitive`; Compliance-Prüfung und Trefferanzeige arbeiten weiter auf dem Original, und das `warning`-Feld weist auf die Maskierung hin. Platzhalter bleiben im optimierten Prompt sichtbar und werden nicht zurückgetauscht.
 
 ## Einschränkungen
 
