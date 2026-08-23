@@ -483,3 +483,30 @@ Mögliche Ansatzpunkte für die Diskussion:
   bei Bedarf individuell zu deaktivieren, ohne Code zu ändern.
 - Ehrlichere Fehlermeldung, die zwischen echtem Verbindungsfehler und
   Timeout unterscheidet.
+
+### Finding (bewusst so entschieden, kein Fund): Routing Engine liefert nur Empfehlung, keinen automatischen Dispatch
+
+**Frage beim Präsentations-Check**: Entscheidet und verschickt die im
+Architekturdiagramm skizzierte "LLM Router"/"Entscheidung"-Komponente
+selbstständig an lokales bzw. Cloud-LLM? Antwort: **nein** — und das ist
+kein Bug, sondern bewusst so gebaut.
+
+**Ist-Zustand**: `recommendation_service.py` berechnet aus Sensitivität,
+Komplexität, gewähltem Modus und Kontextlänge eine Empfehlung
+(Modellklasse + Begründung). Der eigentliche Versand (`/api/send`,
+`app/routes/api.py`) verschickt ausschließlich an die vom Nutzer im UI
+manuell bestätigte `provider_id` — unabhängig davon, was empfohlen wurde.
+Die Empfehlung dient nur der Vorbelegung/Anzeige, nicht dem Dispatch.
+
+**Entscheidung**: Bewusst kein automatischer Versand, weil laut
+Compliance-Konzept jeder Versand eine explizite, bewusste Nutzerbestätigung
+braucht (siehe README „Analyse und Versand sind technisch getrennt").
+`Architektur.md` und `docs/TECHNISCHE_DOKUMENTATION.md` sind entsprechend
+präzisiert (2026-08-23), damit dieser Ist-Zustand nicht mit einer
+unfertigen Automatisierung verwechselt wird.
+
+**Ausblick**: Eine mögliche Erweiterung wäre, dem Nutzer optional einen
+automatischen Versand ohne manuelle Bestätigung anzubieten (z. B. als
+Opt-in). Wird separat in einer eigenen Verbesserungs-/Ideenliste geführt
+und ist für die Projektpräsentation am 12.09.2026 vorgesehen — Priorität
+und Machbarkeit dort noch offen.
