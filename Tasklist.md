@@ -14,7 +14,7 @@ Implementierung Berechnungsgrundlagen
 - Auswahl des lokalen LLMs ( Tests)
 ----
 
-8‑Wochen‑Taskliste**, so dass ihr **spätestens am 10.09.** eine stabile Live‑Demo für Euer Projekt *Sustainable AI Gateway*, inklusive einer **vollen Woche Puffer für den Dry‑Run**.  
+8‑Wochen‑Taskliste**, so dass ihr **spätestens am 12.09.2026** (Tag der Präsentation/Demo) eine stabile Live‑Demo für Euer Projekt *Sustainable AI Gateway*, inklusive einer **vollen Woche Puffer für den Dry‑Run**.  
 
 ---
 
@@ -44,7 +44,7 @@ Implementierung Berechnungsgrundlagen
 
 ---
 
-Hier ist deine **angepasste 8‑Wochen‑Taskliste**, so dass ihr **spätestens am 10.09.** eine stabile Live‑Demo zeigen könnt.  
+Hier ist deine **angepasste 8‑Wochen‑Taskliste**, so dass ihr **spätestens am 12.09.2026** eine stabile Live‑Demo zeigen könnt.  
 Ich habe die Inhalte verdichtet, Prioritäten neu gesetzt und trotzdem eine **volle Woche für den Dry‑Run** eingeplant.
 
 ---
@@ -116,7 +116,7 @@ Ich habe die Inhalte verdichtet, Prioritäten neu gesetzt und trotzdem eine **vo
 ---
 
 ## 🎯 Ergebnis
-Ihr habt am 10.09. eine **stabile, lokal lauffähige Demo**, die CO₂‑Fußabdruck, Kosten, Dauer, Compliance und Optimierungsvorschläge für Prompts liefert.
+Ihr habt am 12.09.2026 eine **stabile, lokal lauffähige Demo**, die CO₂‑Fußabdruck, Kosten, Dauer, Compliance und Optimierungsvorschläge für Prompts liefert.
 
 Wenn du willst, kann ich dir die Taskliste auch als **GitHub‑README‑Taskliste mit Checkboxen** formatieren.
 
@@ -228,9 +228,9 @@ Parameter → Formel), beteiligte Module (`ecologits_service.py`,
 `sustainability_service.py`, `app/routes/api.py`), Datenfluss zwischen
 `/api/analyze`, `/api/estimate-footprint` und `/api/send`.
 
-**Kontext**: Projektpräsentation in ca. 4 Wochen (Zieltermin ca. 2026-09-18,
-ausgehend vom 2026-08-21) — das Diagramm soll dort gezeigt werden können, um
-die EcoLogits-Architektur verständlich zu vermitteln.
+**Kontext**: Projektpräsentation am 2026-09-12 (Zieltermin, ausgehend vom
+2026-08-21) — das Diagramm soll dort gezeigt werden können, um die
+EcoLogits-Architektur verständlich zu vermitteln.
 
 **Priorität**: nicht dringend, aber terminlich relevant — rechtzeitig vor der
 Präsentation einplanen, nicht erst kurz davor.
