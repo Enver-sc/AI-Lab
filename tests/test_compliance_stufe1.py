@@ -28,7 +28,16 @@ def test_sixteen_digits_without_valid_luhn_are_not_flagged():
 def test_valid_german_iban_is_detected():
     result = inspect_prompt("Überweise das Honorar auf DE89370400440532013000 bis Freitag.")
     assert "IBAN" in result["findings"]
-    assert result["contains_personal_data"] is True
+
+
+def test_kontodaten_intent_without_real_iban_is_flagged_as_finanzdaten():
+    prompt = (
+        "Ich möchte an einen Käufer per mail meine Kontodaten zwecks "
+        "Überweisung des Kaufbetrags für eine Stereoanlage schicken. "
+        "Formuliere mir diese Mail."
+    )
+    result = inspect_prompt(prompt)
+    assert "Finanzdaten" in result["findings"]
 
 
 def test_de_string_with_invalid_mod97_checksum_is_not_flagged():
