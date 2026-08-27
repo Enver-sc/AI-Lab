@@ -1,7 +1,11 @@
+import logging
 import re
+import time
 
 from .compliance_service import redact_sensitive
-from .ollama_service import OllamaError, OllamaService
+from .ollama_service import OllamaError, OllamaService, OllamaTimeoutError
+
+logger = logging.getLogger(__name__)
 
 # granite4.1-guardian ist ein IBM-Granite-Guardian-Modell: Es ignoriert freie
 # Formatanweisungen (auch "antworte als JSON" -- mit format=json liefert es sogar
@@ -29,6 +33,18 @@ INVALID_NOTICE = "Stufe-2-Prüfung ohne verwertbares Ergebnis (ungültige Modell
 
 SCORE_PATTERN = re.compile(r"<score>\s*(yes|no)\s*</score>", re.I)
 
+# Der Guardian beantwortet einen kurzen Einzelprompt mit einem einzelnen yes/no-
+# Urteil -- der Modelfile-Default (num_ctx 131072) reserviert dafuer trotzdem eine
+# ~29-GB-Instanz (siehe `ollama ps`) und braucht entsprechend lange zum Laden,
+# vor allem wenn ein anderes Modell den GPU-Speicher zwischenzeitlich belegt hat.
+# 4096 Token reichen fuer Kriterientext + Prompt + Denkprozess + Urteil bequem aus
+# (im aufgezeichneten Fixture-Lauf: 320 Prompt- + 418 Antwort-Token) und halten die
+# Instanz klein genug, um zwischen zwei Pruefungen zuverlaessig warm zu bleiben.
+# Bewusst keine weiteren Optionen (Temperatur o. Ä.): jede zusaetzliche, zwischen
+# Aufrufen variierende Option wuerde Ollama zwingen, das Modell mit den neuen
+# Optionen neu zu laden statt die bereits warme Instanz zu treffen.
+GUARDIAN_OPTIONS = {"num_ctx": 4096}
+
 
 def parse_guardian(raw: str) -> dict | None:
     match = SCORE_PATTERN.search(raw or "")
@@ -40,11 +56,25 @@ def parse_guardian(raw: str) -> dict | None:
 def check_text(text: str, service: OllamaService, keep_alive: str | None = None) -> tuple[dict | None, str | None]:
     # Wie bei der Analyse (Issue #2): erkannte sensible Werte erreichen auch das
     # Guardian-Modell nie im Klartext.
+    start = time.monotonic()
     try:
-        raw = service.generate(redact_sensitive(text), GUARDIAN_RISK_DEFINITION, keep_alive=keep_alive)
-    except OllamaError:
+        data = service.generate_raw(
+            redact_sensitive(text), GUARDIAN_RISK_DEFINITION, keep_alive=keep_alive, options=GUARDIAN_OPTIONS
+        )
+    except OllamaTimeoutError:
+        logger.info("Guardian-Timeout nach %.1fs", time.monotonic() - start)
         return None, UNAVAILABLE_NOTICE
-    result = parse_guardian(raw)
+    except OllamaError as exc:
+        logger.info("Guardian-Aufruf fehlgeschlagen nach %.1fs: %s", time.monotonic() - start, exc)
+        return None, UNAVAILABLE_NOTICE
+    wall = time.monotonic() - start
+    # total_duration/load_duration kommen als Nanosekunden von Ollama -- ein
+    # load_duration nahe total_duration zeigt einen Kaltstart (Modell neu geladen),
+    # ein load_duration nahe 0 eine bereits warme Instanz.
+    total_s = data.get("total_duration", 0) / 1e9
+    load_s = data.get("load_duration", 0) / 1e9
+    logger.info("Guardian-Aufruf: %.1fs (Ollama total=%.1fs, load=%.1fs)", wall, total_s, load_s)
+    result = parse_guardian(data["response"])
     if result is None:
         return None, INVALID_NOTICE
     return result, None
