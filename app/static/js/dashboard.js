@@ -625,7 +625,14 @@
       element("#cost").textContent = (data.recommendation.provider === "Anthropic" ? "$ " : "€ ") + data.estimated_cost.toFixed(6);
       element("#duration").textContent = data.duration.min_seconds + "–" + data.duration.max_seconds + " s";
       element("#compliance").textContent = data.compliance.score + "/100";
-      element("#compliance").className = data.compliance.level;
+      // Ein Teilausfall der Stufe-2-Pruefung darf nicht wie ein sauberer, vollstaendiger
+      // Durchlauf aussehen: im degradierten Zustand ueberschreibt die Warnfarbe die
+      // eigentliche Stufe-1-Ampel, zusaetzlich zum Text-Label (Farbe nie als einziges
+      // Unterscheidungsmerkmal, WCAG 1.4.1).
+      var degraded = data.compliance.status === "degradiert";
+      element("#compliance").className = degraded ? "yellow" : data.compliance.level;
+      var statusLabel = element("#compliance-status-label");
+      if (statusLabel) statusLabel.hidden = !degraded;
       var findingsText = data.compliance.findings.join(", ") || "Keine lokalen Treffer";
       var semantic = data.compliance.semantic_findings || [];
       if (semantic.length) {
