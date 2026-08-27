@@ -35,6 +35,14 @@ def test_red_compliance_blocks_send(app,client,csrf):
     prompt="password=verysecret sk-abcdefghijklmnop Bearer abcdefghijklmnopqrst -----BEGIN PRIVATE KEY-----"
     assert client.post("/api/send",json={"prompt":prompt,"provider_id":1},headers={"X-CSRF-Token":csrf}).status_code==403
 
+def test_compliance_status_label_hidden_in_initial_state(client):
+    # Regression: das "nur Stufe 1"-Label wurde durch .status-label{display:inline-block}
+    # sichtbar, obwohl das hidden-Attribut im Template gesetzt ist -- die Klassenregel
+    # ueberstimmt sonst die UA-Regel [hidden]{display:none} bei gleicher Spezifitaet.
+    body = client.get("/").data.decode()
+    assert 'id="compliance-status-label" class="status-label" hidden' in body
+
+
 def test_eu_button_only_with_eu_provider(app,client):
     assert b'id="send-eu" class="eu" disabled' in client.get("/").data
     with app.app_context():
