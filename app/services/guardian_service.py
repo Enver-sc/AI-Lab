@@ -1,56 +1,47 @@
-import json
 import re
 
 from .compliance_service import redact_sensitive
 from .ollama_service import OllamaError, OllamaService
 
-# Englische Risikodefinition: Guardian-Modelle sind überwiegend auf englische
-# Instruktionen trainiert; die Begründung fordern wir trotzdem auf Deutsch an.
-GUARDIAN_SYSTEM_PROMPT = """You are a data-protection guardian for prompts that are about to be sent to an external AI provider. Assess ONLY privacy risk in the sense of the EU GDPR and the German church data protection law (KDG). A text is risky if it contains or implies: (1) personal or identifying information about a natural person, even without numbers or contact data (for example a name, role, department, or a combination of details that makes someone identifiable), (2) health-related information about a person (illness, sick leave, diagnosis, treatment), (3) internal confidential business information (unpublished figures, customer data, internal plans or documents marked internal). General questions, public knowledge and clearly fictional examples are not risky. Respond ONLY with one JSON object of the form {"risk": true or false, "categories": [subset of "personal_data", "health_data", "confidential_internal"], "reason": "one short sentence in German"}. No markdown, no additional text."""
+# granite4.1-guardian ist ein IBM-Granite-Guardian-Modell: Es ignoriert freie
+# Formatanweisungen (auch "antworte als JSON" -- mit format=json liefert es sogar
+# nur noch Muell) und traegt den hier gesetzten Text stattdessen wortwoertlich als
+# Risikokriterium in sein eigenes, festes Antwortprotokoll "<score> yes|no </score>"
+# ein (siehe `ollama show granite4.1-guardian:8b --modelfile`, Sektion get_criteria).
+# Deshalb rein deskriptiv formuliert, ohne Ausgabeformat-Anweisung.
+GUARDIAN_RISK_DEFINITION = (
+    "Personal or identifying information about a natural person (for example a name, "
+    "role, department, or a combination of details that makes someone identifiable), "
+    "health-related information about a person (illness, sick leave, diagnosis, treatment), "
+    "or confidential internal business information (unpublished figures, customer data, "
+    "internal plans or documents marked internal). Public knowledge and clearly fictional "
+    "examples are not risky."
+)
 
-CATEGORY_LABELS = {
-    "personal_data": "Personenbezogene oder identifizierende Angaben (Stufe 2)",
-    "health_data": "Gesundheitsdaten (Stufe 2)",
-    "confidential_internal": "Interne vertrauliche Informationen (Stufe 2)",
-    "generic": "Datenschutzrisiko (Stufe 2)",
-}
+# Ein einzelner Guardian-Aufruf liefert nur ein gemeinsames Ja/Nein fuer die obige
+# Kriterienliste, keine Aufschluesselung nach Kategorie -- daher nur ein Label statt
+# einer Kategorie-Zuordnung wie frueher vorgesehen.
+FINDING_LABEL = "Datenschutzrisiko (Stufe 2)"
+FINDING_REASON = "Guardian-Modell (Stufe 2) hat einen moeglichen Datenschutz- oder Vertraulichkeitsbezug erkannt."
 
 UNAVAILABLE_NOTICE = "Stufe-2-Prüfung nicht verfügbar (Guardian-Modell nicht erreichbar); die Bewertung basiert nur auf Stufe 1."
 INVALID_NOTICE = "Stufe-2-Prüfung ohne verwertbares Ergebnis (ungültige Modellantwort); die Bewertung basiert nur auf Stufe 1."
-FALLBACK_REASON = "Keine Begründung vom Guardian-Modell geliefert."
+
+SCORE_PATTERN = re.compile(r"<score>\s*(yes|no)\s*</score>", re.I)
 
 
 def parse_guardian(raw: str) -> dict | None:
-    try:
-        data = json.loads(raw)
-    except (json.JSONDecodeError, TypeError):
-        match = re.search(r"\{.*\}", raw or "", re.S)
-        if not match:
-            return None
-        try:
-            data = json.loads(match.group(0))
-        except json.JSONDecodeError:
-            return None
-    if not isinstance(data, dict) or not isinstance(data.get("risk"), bool):
+    match = SCORE_PATTERN.search(raw or "")
+    if not match:
         return None
-    categories = data.get("categories")
-    if not isinstance(categories, list):
-        categories = []
-    reason = data.get("reason")
-    if not isinstance(reason, str) or not reason.strip():
-        reason = FALLBACK_REASON
-    return {
-        "risk": data["risk"],
-        "categories": [item for item in categories if item in CATEGORY_LABELS],
-        "reason": reason.strip(),
-    }
+    return {"risk": match.group(1).lower() == "yes"}
 
 
-def check_text(text: str, service: OllamaService) -> tuple[dict | None, str | None]:
+def check_text(text: str, service: OllamaService, keep_alive: str | None = None) -> tuple[dict | None, str | None]:
     # Wie bei der Analyse (Issue #2): erkannte sensible Werte erreichen auch das
     # Guardian-Modell nie im Klartext.
     try:
-        raw = service.generate(redact_sensitive(text), GUARDIAN_SYSTEM_PROMPT)
+        raw = service.generate(redact_sensitive(text), GUARDIAN_RISK_DEFINITION, keep_alive=keep_alive)
     except OllamaError:
         return None, UNAVAILABLE_NOTICE
     result = parse_guardian(raw)
@@ -62,33 +53,35 @@ def check_text(text: str, service: OllamaService) -> tuple[dict | None, str | No
 def apply_semantic_check(compliance: dict, text: str, app_config) -> dict:
     merged = dict(compliance)
     merged.setdefault("semantic_findings", [])
+    # Vollstaendig = Stufe 1 und Stufe 2 sind gelaufen; degradiert = nur Stufe 1 kam
+    # zum Zuge (Guardian nicht erreichbar, Zeitlimit ueberschritten oder Antwort nicht
+    # auswertbar). Die Kachel im Frontend haengt ihre Warnfarbe an diesem Feld auf,
+    # damit ein Teilausfall nicht wie ein sauberer Durchlauf aussieht.
+    merged["status"] = "vollständig"
     model = app_config.get("OLLAMA_GUARDIAN_MODEL") or ""
     # Leerer Modellname = Stufe 2 bewusst deaktiviert (z. B. Tests, Betrieb ohne
-    # Guardian-Modell) -- dann still nur Stufe 1, ohne Warnhinweis.
+    # Guardian-Modell) -- das ist eine bewusste Konfiguration, kein Ausfall, daher
+    # weder Warnhinweis noch degradierter Status.
     if not model:
         return merged
     service = OllamaService(
         app_config["OLLAMA_BASE_URL"],
         model,
-        app_config["OLLAMA_TIMEOUT_SECONDS"],
+        app_config.get("OLLAMA_GUARDIAN_TIMEOUT_SECONDS", app_config["OLLAMA_TIMEOUT_SECONDS"]),
     )
-    result, warning = check_text(text, service)
+    keep_alive = app_config.get("OLLAMA_GUARDIAN_KEEP_ALIVE")
+    result, warning = check_text(text, service, keep_alive)
     if warning:
         merged["semantic_warning"] = warning
+        merged["status"] = "degradiert"
         return merged
     if not result["risk"]:
         return merged
-    categories = result["categories"] or ["generic"]
-    merged["semantic_findings"] = [
-        {"label": CATEGORY_LABELS[category], "reason": result["reason"]}
-        for category in categories
-    ]
-    merged["contains_personal_data"] = merged["contains_personal_data"] or bool(
-        {"personal_data", "health_data"} & set(categories)
-    )
-    merged["contains_confidential_data"] = (
-        merged["contains_confidential_data"] or "confidential_internal" in categories
-    )
+    merged["semantic_findings"] = [{"label": FINDING_LABEL, "reason": FINDING_REASON}]
+    # Eine einzelne kombinierte Kriterienpruefung kann nicht zwischen personenbezogenen
+    # und rein vertraulichen Geschaeftsdaten unterscheiden -- konservativ als
+    # personenbezogen werten, da Gesundheits- und Personendaten der Hauptfall sind.
+    merged["contains_personal_data"] = True
     # Stufe 2 ergänzt, sie ersetzt nicht: Funde heben höchstens auf Gelb an;
     # Rot und das Blockieren bleiben allein Sache der deterministischen Stufe 1.
     if merged["level"] == "green":
