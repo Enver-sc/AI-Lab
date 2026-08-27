@@ -1,9 +1,10 @@
+import pytest
 from unittest.mock import patch
 from cryptography.fernet import Fernet
 from app.extensions import db
 from app.models import ProviderConfiguration, UsageLog
 from app.services.encryption_service import EncryptionService
-from app.services.ollama_service import OllamaError
+from app.services.ollama_service import OllamaError, OllamaService
 
 ANALYSIS_STUB = {"prompt_category":"x","complexity_score":1,"sensitivity_score":1,"compliance_score":100,"contains_personal_data":False,"contains_confidential_data":False,"copyright_risk":"low","recommended_model_class":"local_small","optimization_suggestions":[],"optimized_prompt":"x","short_reasoning":"x"}
 
@@ -485,7 +486,7 @@ def test_compliance_check_rejects_invalid_history(client, csrf):
     assert response.status_code == 400
 
 
-GUARDIAN_RISK_JSON = '{"risk": true, "categories": ["health_data", "personal_data"], "reason": "Krankmeldung einer identifizierbaren Person."}'
+GUARDIAN_RISK_RESPONSE = "<score> yes </score>"
 SEMANTIC_ONLY_PROMPT = "Person A aus Abteilung X ist heute krank"
 
 
@@ -493,7 +494,7 @@ def test_guardian_raises_semantic_case_to_yellow(app, client, csrf):
     # Bekannte Stufe-1-Grenze: keine prüfbaren Muster, aber identifizierbare
     # Person plus Gesundheitsbezug -- Stufe 2 muss auf Gelb heben.
     app.config["OLLAMA_GUARDIAN_MODEL"] = "guardian-test"
-    with patch("app.services.guardian_service.OllamaService.generate", return_value=GUARDIAN_RISK_JSON):
+    with patch("app.services.guardian_service.OllamaService.generate", return_value=GUARDIAN_RISK_RESPONSE):
         response = client.post(
             "/api/compliance/check",
             json={"prompt": SEMANTIC_ONLY_PROMPT},
@@ -504,8 +505,9 @@ def test_guardian_raises_semantic_case_to_yellow(app, client, csrf):
     assert data["findings"] == []
     assert data["level"] == "yellow"
     assert data["score"] <= 79
+    assert data["status"] == "vollständig"
     labels = [finding["label"] for finding in data["semantic_findings"]]
-    assert "Gesundheitsdaten (Stufe 2)" in labels
+    assert "Datenschutzrisiko (Stufe 2)" in labels
     assert all(finding["reason"] for finding in data["semantic_findings"])
 
 
@@ -520,12 +522,13 @@ def test_guardian_unreachable_falls_back_to_stufe1(app, client, csrf):
     data = response.get_json()
     assert data["level"] == "green"
     assert "Stufe-2" in data["semantic_warning"]
+    assert data["status"] == "degradiert"
 
 
 def test_guardian_yellow_does_not_block_send(app, client, csrf):
     add_anthropic_provider(app)
     app.config["OLLAMA_GUARDIAN_MODEL"] = "guardian-test"
-    with patch("app.services.guardian_service.OllamaService.generate", return_value=GUARDIAN_RISK_JSON), patch(
+    with patch("app.services.guardian_service.OllamaService.generate", return_value=GUARDIAN_RISK_RESPONSE), patch(
         "app.routes.api.AnthropicProvider.generate_messages",
         return_value=("Gute Besserung!", {"input_tokens": 10, "output_tokens": 5}),
     ):
@@ -544,7 +547,7 @@ def test_guardian_yellow_does_not_block_send(app, client, csrf):
 def test_guardian_runs_during_analysis(app, client, csrf):
     app.config["OLLAMA_GUARDIAN_MODEL"] = "guardian-test"
     with patch("app.routes.api.analyze_with_ollama", return_value=(ANALYSIS_STUB, None)), patch(
-        "app.services.guardian_service.OllamaService.generate", return_value=GUARDIAN_RISK_JSON
+        "app.services.guardian_service.OllamaService.generate", return_value=GUARDIAN_RISK_RESPONSE
     ):
         response = client.post(
             "/api/analyze",
@@ -555,3 +558,32 @@ def test_guardian_runs_during_analysis(app, client, csrf):
     assert data["compliance"]["level"] == "yellow"
     assert data["compliance"]["semantic_findings"]
     assert data["analysis"]["contains_personal_data"] is True
+
+
+def _ollama_guardian_reachable():
+    try:
+        OllamaService("http://localhost:11434", "granite4.1-guardian:8b", 5).list_models()
+        return True
+    except OllamaError:
+        return False
+
+
+@pytest.mark.skipif(not _ollama_guardian_reachable(), reason="Ollama/Guardian-Modell lokal nicht erreichbar")
+def test_guardian_detects_person_a_case_against_real_model(app, client, csrf):
+    # Aus der Juli-Trockenübung bekannter Testfall: kein Stufe-1-Muster (keine IBAN,
+    # E-Mail o. Ä.), aber eine identifizierbare Person mit Gesundheitsbezug -- nur
+    # das echte Guardian-Modell kann das erkennen.
+    app.config["OLLAMA_GUARDIAN_MODEL"] = "granite4.1-guardian:8b"
+    # TestConfig setzt OLLAMA_TIMEOUT_SECONDS bewusst sehr knapp (.1s) fuer schnelle
+    # gemockte Tests -- fuer den echten Modellaufruf hier reicht das nicht.
+    app.config["OLLAMA_GUARDIAN_TIMEOUT_SECONDS"] = 60
+    response = client.post(
+        "/api/compliance/check",
+        json={"prompt": SEMANTIC_ONLY_PROMPT},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["level"] == "yellow"
+    assert data["status"] == "vollständig"
+    assert data["semantic_findings"]
