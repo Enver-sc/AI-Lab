@@ -633,6 +633,11 @@
       element("#compliance").className = degraded ? "yellow" : data.compliance.level;
       var statusLabel = element("#compliance-status-label");
       if (statusLabel) statusLabel.hidden = !degraded;
+      // "Stufe 1 + 2 geprüft" bewusst nur bei Status "vollständig", nicht bei !degraded:
+      // bei bewusst deaktivierter Stufe 2 (Status "stufe-2-deaktiviert") ist die
+      // Behauptung eines 2-stufigen Durchlaufs falsch, dann bleibt die Zeile leer.
+      var coverage = element("#compliance-coverage");
+      if (coverage) coverage.hidden = data.compliance.status !== "vollständig";
       var findingsText = data.compliance.findings.join(", ") || "Keine lokalen Treffer";
       var semantic = data.compliance.semantic_findings || [];
       if (semantic.length) {

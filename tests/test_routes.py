@@ -43,6 +43,14 @@ def test_compliance_status_label_hidden_in_initial_state(client):
     assert 'id="compliance-status-label" class="status-label" hidden' in body
 
 
+def test_compliance_coverage_line_hidden_in_initial_state(client):
+    # Dieselbe Falle wie beim "nur Stufe 1"-Label: .metrics small{display:block}
+    # wuerde als Author-Regel das hidden-Attribut ueberstimmen, daher braucht die
+    # Statuszeile ihre eigene [hidden]-Regel und startet unsichtbar.
+    body = client.get("/").data.decode()
+    assert 'id="compliance-coverage" class="coverage-note" hidden>Stufe 1 + 2 geprüft<' in body
+
+
 def test_eu_button_only_with_eu_provider(app,client):
     assert b'id="send-eu" class="eu" disabled' in client.get("/").data
     with app.app_context():
@@ -531,6 +539,44 @@ def test_guardian_unreachable_falls_back_to_stufe1(app, client, csrf):
     assert data["level"] == "green"
     assert "Stufe-2" in data["semantic_warning"]
     assert data["status"] == "degradiert"
+
+
+def test_guardian_clean_pass_reports_full_status(app, client, csrf):
+    # Vertrag fuer die Statuszeile "Stufe 1 + 2 geprüft": ein vollstaendiger Lauf
+    # ohne Fund ist am Status erkennbar, nicht nur am Fehlen von Warnungen --
+    # sonst waere Erfolg nicht von einer still uebersprungenen Stufe 2 zu
+    # unterscheiden.
+    app.config["OLLAMA_GUARDIAN_MODEL"] = "guardian-test"
+    with patch(
+        "app.services.guardian_service.OllamaService.generate_raw",
+        return_value={"response": "<score> no </score>", "total_duration": 1_200_000_000, "load_duration": 0},
+    ):
+        response = client.post(
+            "/api/compliance/check",
+            json={"prompt": "Erkläre mir den Unterschied zwischen Ebbe und Flut."},
+            headers={"X-CSRF-Token": csrf},
+        )
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["status"] == "vollständig"
+    assert data["level"] == "green"
+    assert data["semantic_findings"] == []
+    assert "semantic_warning" not in data
+
+
+def test_guardian_disabled_reports_distinct_status(client, csrf):
+    # Bewusst deaktivierte Stufe 2 (leeres OLLAMA_GUARDIAN_MODEL, hier der
+    # Test-Default) ist kein Ausfall, darf sich aber auch nicht als vollstaendiger
+    # 2-Stufen-Lauf ausgeben -- die Kachel zeigte sonst "Stufe 1 + 2 geprüft".
+    response = client.post(
+        "/api/compliance/check",
+        json={"prompt": "Hallo"},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["status"] == "stufe-2-deaktiviert"
+    assert "semantic_warning" not in data
 
 
 def test_guardian_yellow_does_not_block_send(app, client, csrf):
