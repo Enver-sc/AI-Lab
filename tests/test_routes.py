@@ -486,7 +486,7 @@ def test_compliance_check_rejects_invalid_history(client, csrf):
     assert response.status_code == 400
 
 
-GUARDIAN_RISK_RESPONSE = "<score> yes </score>"
+GUARDIAN_RISK_RESPONSE = {"response": "<score> yes </score>", "total_duration": 1_200_000_000, "load_duration": 0}
 SEMANTIC_ONLY_PROMPT = "Person A aus Abteilung X ist heute krank"
 
 
@@ -494,7 +494,7 @@ def test_guardian_raises_semantic_case_to_yellow(app, client, csrf):
     # Bekannte Stufe-1-Grenze: keine prüfbaren Muster, aber identifizierbare
     # Person plus Gesundheitsbezug -- Stufe 2 muss auf Gelb heben.
     app.config["OLLAMA_GUARDIAN_MODEL"] = "guardian-test"
-    with patch("app.services.guardian_service.OllamaService.generate", return_value=GUARDIAN_RISK_RESPONSE):
+    with patch("app.services.guardian_service.OllamaService.generate_raw", return_value=GUARDIAN_RISK_RESPONSE):
         response = client.post(
             "/api/compliance/check",
             json={"prompt": SEMANTIC_ONLY_PROMPT},
@@ -513,7 +513,7 @@ def test_guardian_raises_semantic_case_to_yellow(app, client, csrf):
 
 def test_guardian_unreachable_falls_back_to_stufe1(app, client, csrf):
     app.config["OLLAMA_GUARDIAN_MODEL"] = "guardian-test"
-    with patch("app.services.guardian_service.OllamaService.generate", side_effect=OllamaError("down")):
+    with patch("app.services.guardian_service.OllamaService.generate_raw", side_effect=OllamaError("down")):
         response = client.post(
             "/api/compliance/check",
             json={"prompt": SEMANTIC_ONLY_PROMPT},
@@ -528,7 +528,7 @@ def test_guardian_unreachable_falls_back_to_stufe1(app, client, csrf):
 def test_guardian_yellow_does_not_block_send(app, client, csrf):
     add_anthropic_provider(app)
     app.config["OLLAMA_GUARDIAN_MODEL"] = "guardian-test"
-    with patch("app.services.guardian_service.OllamaService.generate", return_value=GUARDIAN_RISK_RESPONSE), patch(
+    with patch("app.services.guardian_service.OllamaService.generate_raw", return_value=GUARDIAN_RISK_RESPONSE), patch(
         "app.routes.api.AnthropicProvider.generate_messages",
         return_value=("Gute Besserung!", {"input_tokens": 10, "output_tokens": 5}),
     ):
@@ -547,7 +547,7 @@ def test_guardian_yellow_does_not_block_send(app, client, csrf):
 def test_guardian_runs_during_analysis(app, client, csrf):
     app.config["OLLAMA_GUARDIAN_MODEL"] = "guardian-test"
     with patch("app.routes.api.analyze_with_ollama", return_value=(ANALYSIS_STUB, None)), patch(
-        "app.services.guardian_service.OllamaService.generate", return_value=GUARDIAN_RISK_RESPONSE
+        "app.services.guardian_service.OllamaService.generate_raw", return_value=GUARDIAN_RISK_RESPONSE
     ):
         response = client.post(
             "/api/analyze",
