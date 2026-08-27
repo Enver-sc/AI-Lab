@@ -19,6 +19,16 @@ class Config:
     OLLAMA_ANALYSIS_TIMEOUT_SECONDS = float(os.getenv("OLLAMA_ANALYSIS_TIMEOUT_SECONDS", "0"))
     # Leerer Wert deaktiviert die semantische Stufe-2-Prüfung.
     OLLAMA_GUARDIAN_MODEL = os.getenv("OLLAMA_GUARDIAN_MODEL", "granite4.1-guardian:8b")
+    # Eigenes, grosszuegiges Zeitlimit statt OLLAMA_TIMEOUT_SECONDS: ein kalt startendes
+    # 8B-Guardian-Modell braucht beim ersten Aufruf spuerbar laenger zum Laden als ein
+    # bereits im Speicher gehaltenes Modell; ohne Limit blockiert der Request sonst
+    # minutenlang die App, mit zu knappem Limit wuerde jeder Kaltstart faelschlich in
+    # den degradierten Zustand fallen.
+    OLLAMA_GUARDIAN_TIMEOUT_SECONDS = float(os.getenv("OLLAMA_GUARDIAN_TIMEOUT_SECONDS", "120"))
+    # Haelt das Guardian-Modell nach einem Aufruf laenger im Speicher (Ollama-Default
+    # waere 5m) -- Stufe-2-Pruefungen kommen innerhalb einer Arbeitssitzung wiederholt
+    # vor; 30 Minuten vermeiden wiederholte Kaltstarts, ohne das Modell dauerhaft zu binden.
+    OLLAMA_GUARDIAN_KEEP_ALIVE = os.getenv("OLLAMA_GUARDIAN_KEEP_ALIVE", "30m")
     APP_ENCRYPTION_KEY = os.getenv("APP_ENCRYPTION_KEY", "")
     ENABLE_PROMPT_LOGGING = as_bool(os.getenv("ENABLE_PROMPT_LOGGING", "false"))
     MAX_PROMPT_LENGTH = int(os.getenv("MAX_PROMPT_LENGTH", "30000"))
