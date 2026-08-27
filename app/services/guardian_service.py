@@ -91,8 +91,10 @@ def apply_semantic_check(compliance: dict, text: str, app_config) -> dict:
     model = app_config.get("OLLAMA_GUARDIAN_MODEL") or ""
     # Leerer Modellname = Stufe 2 bewusst deaktiviert (z. B. Tests, Betrieb ohne
     # Guardian-Modell) -- das ist eine bewusste Konfiguration, kein Ausfall, daher
-    # weder Warnhinweis noch degradierter Status.
+    # weder Warnhinweis noch degradierter Status. Aber auch kein "vollständig":
+    # die Kachel zeigt dafür "Stufe 1 + 2 geprüft", und das wäre hier gelogen.
     if not model:
+        merged["status"] = "stufe-2-deaktiviert"
         return merged
     service = OllamaService(
         app_config["OLLAMA_BASE_URL"],

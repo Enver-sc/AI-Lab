@@ -112,7 +112,10 @@ def test_apply_semantic_check_disabled_without_model():
     assert merged["level"] == "green"
     assert merged["semantic_findings"] == []
     assert "semantic_warning" not in merged
-    assert merged["status"] == "vollständig"
+    # Bewusst deaktivierte Stufe 2 ist kein Ausfall (kein Warnhinweis), darf sich
+    # aber auch nicht als vollstaendiger 2-Stufen-Lauf ausgeben -- daran haengt
+    # die Statuszeile "Stufe 1 + 2 geprüft" der Kachel.
+    assert merged["status"] == "stufe-2-deaktiviert"
 
 
 def test_apply_semantic_check_raises_green_to_yellow_with_flags():
