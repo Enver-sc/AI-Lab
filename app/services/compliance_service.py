@@ -11,7 +11,7 @@ PATTERNS = {
 }
 KEYWORDS = {
     "Gesundheitsdaten": (r"(?i)\b(diagnose|patient|krankheit|medikament|gesundheitsdaten)\b", 18),
-    "Finanzdaten": (r"(?i)\b(kontostand|steuererklärung|gehalt|finanzdaten)\b", 14),
+    "Finanzdaten": (r"(?i)\b(kontostand|steuererklärung|gehalt|finanzdaten|kontodaten|bankverbindung|kontonummer)\b", 14),
     "Vertrauliche Informationen": (r"(?i)\b(vertraulich|geschäftsgeheimnis|internal only|nda)\b", 18),
     "Schädliche oder rechtswidrige Anfrage": (r"(?i)\b(hacken|ransomware|bombe bauen|betrug begehen|diskriminier)\b", 35),
     "Urheberrechtsrisiko": (r"(?i)\b(vollständig(?:e[nrms]?)? (?:buch|artikel|songtext)|urheberrechtlich)\b", 12),

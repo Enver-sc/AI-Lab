@@ -3,6 +3,11 @@ from unittest.mock import patch
 
 from app.services.analysis_service import REDACTION_NOTICE
 
+
+# Die Analyse liest seit dem Beweis-Logging die volle Ollama-Antwort (generate_raw).
+def raw_reply(text):
+    return {"response": text, "total_duration": 0, "load_duration": 0}
+
 IBAN = "DE89370400440532013000"
 IBAN_MASKED = "DE8***3000"
 MODEL_REPLY = json.dumps({
@@ -13,13 +18,13 @@ MODEL_REPLY = json.dumps({
 
 def call_with_mocked_model(client, csrf, prompt, endpoint="/api/analyze"):
     with patch("app.routes.api.OllamaService") as service_class:
-        service_class.return_value.generate.return_value = MODEL_REPLY
+        service_class.return_value.generate_raw.return_value = raw_reply(MODEL_REPLY)
         response = client.post(
             endpoint,
             json={"prompt": prompt},
             headers={"X-CSRF-Token": csrf},
         )
-    return response, service_class.return_value.generate
+    return response, service_class.return_value.generate_raw
 
 
 def test_optimizer_never_receives_cleartext_iban(client, csrf):
@@ -45,7 +50,7 @@ def test_harmless_prompt_reaches_model_unchanged(client, csrf):
 
 def test_fallback_keeps_masking_and_combines_warnings(client, csrf):
     with patch("app.routes.api.OllamaService") as service_class:
-        service_class.return_value.generate.return_value = "keine json antwort"
+        service_class.return_value.generate_raw.return_value = raw_reply("keine json antwort")
         response = client.post(
             "/api/optimize",
             json={"prompt": f"Überweise 50 Euro an {IBAN}."},
@@ -62,7 +67,7 @@ def test_fallback_keeps_masking_and_combines_warnings(client, csrf):
 def test_masked_echo_creates_no_optimized_block(client, csrf):
     echo_reply = json.dumps({"optimized_prompt": f"Meine IBAN ist {IBAN_MASKED}."})
     with patch("app.routes.api.OllamaService") as service_class:
-        service_class.return_value.generate.return_value = echo_reply
+        service_class.return_value.generate_raw.return_value = raw_reply(echo_reply)
         response = client.post(
             "/api/analyze",
             json={"prompt": f"Meine IBAN ist {IBAN}."},

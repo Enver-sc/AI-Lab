@@ -625,8 +625,22 @@
       element("#cost").textContent = (data.recommendation.provider === "Anthropic" ? "$ " : "€ ") + data.estimated_cost.toFixed(6);
       element("#duration").textContent = data.duration.min_seconds + "–" + data.duration.max_seconds + " s";
       element("#compliance").textContent = data.compliance.score + "/100";
-      element("#compliance").className = data.compliance.level;
-      var findingsText = data.compliance.findings.join(", ") || "Keine lokalen Treffer";
+      // Ein Teilausfall der Stufe-2-Pruefung darf nicht wie ein sauberer, vollstaendiger
+      // Durchlauf aussehen: im degradierten Zustand ueberschreibt die Warnfarbe die
+      // eigentliche Stufe-1-Ampel, zusaetzlich zum Text-Label (Farbe nie als einziges
+      // Unterscheidungsmerkmal, WCAG 1.4.1).
+      var degraded = data.compliance.status === "degradiert";
+      element("#compliance").className = degraded ? "yellow" : data.compliance.level;
+      var statusLabel = element("#compliance-status-label");
+      if (statusLabel) statusLabel.hidden = !degraded;
+      // "Stufe 1 + 2 geprüft" bewusst nur bei Status "vollständig", nicht bei !degraded:
+      // bei bewusst deaktivierter Stufe 2 (Status "stufe-2-deaktiviert") ist die
+      // Behauptung eines 2-stufigen Durchlaufs falsch, dann bleibt die Zeile leer.
+      var coverage = element("#compliance-coverage");
+      if (coverage) coverage.hidden = data.compliance.status !== "vollständig";
+      // Fuer Aussenstehende lesbar: beide Stufen mit Klartext-Namen, die Stufe-2-Zeile
+      // haengt "<label>: <reason>" an (Label traegt die Stufenangabe, siehe guardian_service).
+      var findingsText = "Musterprüfung (Stufe 1): " + (data.compliance.findings.join(", ") || "keine Kennungen gefunden");
       var semantic = data.compliance.semantic_findings || [];
       if (semantic.length) {
         findingsText += " · " + semantic.map(function (finding) { return finding.label + ": " + finding.reason; }).join(" · ");
