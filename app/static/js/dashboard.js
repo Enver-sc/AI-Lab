@@ -638,7 +638,9 @@
       // Behauptung eines 2-stufigen Durchlaufs falsch, dann bleibt die Zeile leer.
       var coverage = element("#compliance-coverage");
       if (coverage) coverage.hidden = data.compliance.status !== "vollständig";
-      var findingsText = data.compliance.findings.join(", ") || "Keine lokalen Treffer";
+      // Fuer Aussenstehende lesbar: beide Stufen mit Klartext-Namen, die Stufe-2-Zeile
+      // haengt "<label>: <reason>" an (Label traegt die Stufenangabe, siehe guardian_service).
+      var findingsText = "Musterprüfung (Stufe 1): " + (data.compliance.findings.join(", ") || "keine Kennungen gefunden");
       var semantic = data.compliance.semantic_findings || [];
       if (semantic.length) {
         findingsText += " · " + semantic.map(function (finding) { return finding.label + ": " + finding.reason; }).join(" · ");

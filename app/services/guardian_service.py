@@ -25,8 +25,12 @@ GUARDIAN_RISK_DEFINITION = (
 # Ein einzelner Guardian-Aufruf liefert nur ein gemeinsames Ja/Nein fuer die obige
 # Kriterienliste, keine Aufschluesselung nach Kategorie -- daher nur ein Label statt
 # einer Kategorie-Zuordnung wie frueher vorgesehen.
-FINDING_LABEL = "Datenschutzrisiko (Stufe 2)"
-FINDING_REASON = "Guardian-Modell (Stufe 2) hat einen moeglichen Datenschutz- oder Vertraulichkeitsbezug erkannt."
+# Die Kachel rendert "<label>: <reason>" -- "Stufe 2" daher nur im Label. Nutzer-
+# sichtbare Texte mit echten Umlauten (UTF-8): die Ausweichschreibung "moeglichen"
+# war kein Encoding-Problem, sondern aus der ASCII-Konvention der Kommentare in
+# einen String-Literal gerutscht; Kommentare bleiben ASCII, Strings nicht.
+FINDING_LABEL = "Kontextprüfung (Stufe 2)"
+FINDING_REASON = "mögliches Datenschutz- oder Vertraulichkeitsrisiko erkannt"
 
 UNAVAILABLE_NOTICE = "Stufe-2-Prüfung nicht verfügbar (Guardian-Modell nicht erreichbar); die Bewertung basiert nur auf Stufe 1."
 INVALID_NOTICE = "Stufe-2-Prüfung ohne verwertbares Ergebnis (ungültige Modellantwort); die Bewertung basiert nur auf Stufe 1."

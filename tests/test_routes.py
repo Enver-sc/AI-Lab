@@ -526,7 +526,7 @@ def test_guardian_raises_semantic_case_to_yellow(app, client, csrf):
     assert data["score"] <= 79
     assert data["status"] == "vollständig"
     labels = [finding["label"] for finding in data["semantic_findings"]]
-    assert "Datenschutzrisiko (Stufe 2)" in labels
+    assert "Kontextprüfung (Stufe 2)" in labels
     assert all(finding["reason"] for finding in data["semantic_findings"])
 
 

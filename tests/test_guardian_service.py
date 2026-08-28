@@ -128,6 +128,12 @@ def test_apply_semantic_check_raises_green_to_yellow_with_flags():
     assert merged["score"] <= 79
     assert merged["contains_personal_data"] is True
     assert merged["semantic_findings"][0]["label"] == FINDING_LABEL
+    # Regression: Ausweichschreibung "moeglichen" (ASCII-Kommentarkonvention) war in den
+    # nutzersichtbaren Text gerutscht; Kachel zeigt "<label>: <reason>", Stufe nur im Label.
+    assert merged["semantic_findings"][0] == {
+        "label": "Kontextprüfung (Stufe 2)",
+        "reason": "mögliches Datenschutz- oder Vertraulichkeitsrisiko erkannt",
+    }
     assert merged["semantic_findings"][0]["reason"]
     assert merged["status"] == "vollständig"
 
