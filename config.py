@@ -17,6 +17,9 @@ class Config:
     OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma4")
     OLLAMA_TIMEOUT_SECONDS = float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "60"))
     OLLAMA_ANALYSIS_TIMEOUT_SECONDS = float(os.getenv("OLLAMA_ANALYSIS_TIMEOUT_SECONDS", "0"))
+    # Wie OLLAMA_GUARDIAN_KEEP_ALIVE: Analyse-Aufrufe folgen in einer Sitzung dicht
+    # aufeinander; 30 Minuten statt Ollama-Default 5m vermeiden Kaltstarts dazwischen.
+    OLLAMA_ANALYSIS_KEEP_ALIVE = os.getenv("OLLAMA_ANALYSIS_KEEP_ALIVE", "30m")
     # Leerer Wert deaktiviert die semantische Stufe-2-Prüfung.
     OLLAMA_GUARDIAN_MODEL = os.getenv("OLLAMA_GUARDIAN_MODEL", "granite4.1-guardian:8b")
     # Eigenes, grosszuegiges Zeitlimit statt OLLAMA_TIMEOUT_SECONDS: ein kalt startendes

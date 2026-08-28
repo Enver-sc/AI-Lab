@@ -48,7 +48,7 @@ ollama pull gemma4
 ollama serve
 ```
 
-`OLLAMA_MODEL`, `OLLAMA_BASE_URL` und `OLLAMA_TIMEOUT_SECONDS` steuern die Integration. `OLLAMA_ANALYSIS_TIMEOUT_SECONDS=0` lässt die lokale Dashboard-Analyse ohne Zeitlimit laufen; ein positiver Wert setzt stattdessen ein Limit in Sekunden. Ohne Ollama startet das Gateway weiterhin. `/api/ollama/status` meldet Status und Modelle. `LOCAL_CPU_TDP_WATT` (optional, leer = deaktiviert) aktiviert eine grobe CPU-Auslastungsformel für Energie/CO₂ bei lokalen Ollama-Sends, wenn EcoLogits dafür keinen Wert liefert.
+`OLLAMA_MODEL`, `OLLAMA_BASE_URL` und `OLLAMA_TIMEOUT_SECONDS` steuern die Integration. `OLLAMA_ANALYSIS_TIMEOUT_SECONDS=0` lässt die lokale Dashboard-Analyse ohne Zeitlimit laufen; ein positiver Wert setzt stattdessen ein Limit in Sekunden. `OLLAMA_ANALYSIS_KEEP_ALIVE` (Standard `30m`) hält das Analyse-Modell nach einem Aufruf im Speicher, damit Folgeanalysen dieselbe warme Instanz treffen. Der Analyse-Aufruf sendet ein eigenes `num_ctx` (32768) und keine weiteren Optionen und ist damit unabhängig vom globalen Context-Default der Ollama-App; jede Analyse schreibt eine INFO-Logzeile mit eigener Dauer sowie `total_duration`/`load_duration` aus der Ollama-Antwort ins Terminal (`load` nahe 0 = warme Instanz). Ohne Ollama startet das Gateway weiterhin. `/api/ollama/status` meldet Status und Modelle. `LOCAL_CPU_TDP_WATT` (optional, leer = deaktiviert) aktiviert eine grobe CPU-Auslastungsformel für Energie/CO₂ bei lokalen Ollama-Sends, wenn EcoLogits dafür keinen Wert liefert.
 
 ## Start, Datenbank und Tests
 

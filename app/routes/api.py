@@ -105,7 +105,8 @@ def analysis_payload(prompt, mode="auto"):
         current_app.config["OLLAMA_MODEL"],
         analysis_timeout,
     )
-    try: analysis, warning = analyze_with_ollama(prompt, service)
+    keep_alive = current_app.config.get("OLLAMA_ANALYSIS_KEEP_ALIVE")
+    try: analysis, warning = analyze_with_ollama(prompt, service, keep_alive)
     except OllamaError as exc: analysis, warning = parse_analysis(None, prompt); warning = f"{exc} Sichere Standardanalyse wird verwendet."
     compliance = apply_semantic_check(inspect_prompt(prompt), prompt, current_app.config)
     analysis["contains_personal_data"] |= compliance["contains_personal_data"]
