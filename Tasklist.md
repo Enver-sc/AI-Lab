@@ -587,3 +587,37 @@ automatischen Versand ohne manuelle Bestätigung anzubieten (z. B. als
 Opt-in). Wird separat in einer eigenen Verbesserungs-/Ideenliste geführt
 und ist für die Projektpräsentation am 12.09.2026 vorgesehen — Priorität
 und Machbarkeit dort noch offen.
+
+### Finding (nur dokumentiert, nicht behoben): Fußabdruck-/Kosten-Kacheln zeigen während laufender Analyse noch das alte Ergebnis
+
+**Symptom** (beim manuellen Testen des gemergten Standes vor dem Push
+aufgefallen): Klickt man „Prompt analysieren", zeigt der Button „Analyse
+läuft …", aber die Fußabdruck- und Kosten-/Dauer-/Compliance-Kacheln zeigen
+weiterhin das Ergebnis der vorherigen Analyse — nicht geleert, nicht als
+„wird aktualisiert" markiert.
+
+**Ursache** (`app/static/js/dashboard.js`, `analyze()`, Zeile 711–727): Die
+Kacheln werden beim Start einer neuen Analyse nicht zurückgesetzt.
+`render(data)` läuft erst, nachdem die Antwort von `/api/analyze`
+eingetroffen ist:
+
+```js
+setAnalyzing(true);          // Button -> "Analyse laeuft ..."
+var data = await api("/api/analyze", ...);
+render(data);                 // erst hier werden alle Kacheln aktualisiert
+```
+
+Da `/api/analyze` serverseitig ohnehin alles (Ollama-Analyse, Compliance,
+Kosten, Fußabdruck) in einer einzigen synchronen Antwort liefert, ist es
+technisch ausgeschlossen, dass die angezeigten Werte schon zum neuen Prompt
+gehören, solange der Button „Analyse läuft …" zeigt — sie stammen zwingend
+vom vorherigen Durchlauf.
+
+**Auswirkung für die Live-Demo**: Bei schnellem Prompt-Wechsel könnte der
+Eindruck entstehen, das Ergebnis sei schon für den neuen Prompt da, obwohl
+Ollama noch rechnet.
+
+**Status**: Nur als Fund dokumentiert, keine Code-Änderung vorgenommen. Für
+die Demo reicht es, kurz zu warten, bis „Analyse abgeschlossen." erscheint,
+bevor auf die Werte gezeigt wird. Möglicher späterer Fix: Kacheln beim
+Start von `analyze()` dimmen oder leeren, bis die neue Antwort da ist.
