@@ -40,3 +40,14 @@ def test_generate_sets_format_json_when_requested():
     service = OllamaService("http://localhost", "x", session=session)
     service.generate("Analysiere diesen Prompt.", system="System", json_mode=True)
     assert session.last_json["format"] == "json"
+
+
+def test_generate_omits_think_by_default_and_sends_it_when_set():
+    # think gehoert auf die oberste Payload-Ebene (nicht in options); ohne Angabe
+    # bleibt es weg, damit Modelle ohne Thinking-Faehigkeit keinen Fehler bekommen.
+    session = RecordingSession()
+    service = OllamaService("http://localhost", "x", session=session)
+    service.generate("Hallo")
+    assert "think" not in session.last_json
+    service.generate_raw("Hallo", think=False)
+    assert session.last_json["think"] is False

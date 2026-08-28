@@ -3,7 +3,7 @@ from unittest.mock import Mock
 
 import pytest
 import requests
-from app.services.analysis_service import ANALYSIS_OPTIONS, SYSTEM_PROMPT, analyze_with_ollama, parse_analysis
+from app.services.analysis_service import ANALYSIS_OPTIONS, DEFAULT, SYSTEM_PROMPT, analyze_with_ollama, parse_analysis
 from app.services.ollama_service import OllamaService, OllamaError, OllamaTimeoutError
 
 def test_invalid_ollama_analysis_falls_back():
@@ -47,6 +47,14 @@ def test_analyze_with_ollama_passes_minimal_options_and_keep_alive():
     assert kwargs["keep_alive"] == "30m"
     assert kwargs["options"] == ANALYSIS_OPTIONS == {"num_ctx": 32768}
     assert kwargs["json_mode"] is True
+    assert kwargs["think"] is False
+
+
+def test_json_without_known_keys_falls_back_with_warning():
+    # Regression: gemma4 lieferte mit aktivem Denken nur {"thought": ...}; das ergab
+    # stumm die Standardwerte ohne Warnung.
+    result, warning = parse_analysis('{"thought": "The user wants an email."}', "Original")
+    assert result == {**DEFAULT, "optimized_prompt": "Original"} and warning
 
 
 def test_analyze_with_ollama_logs_measured_duration_and_ollama_timings(caplog):

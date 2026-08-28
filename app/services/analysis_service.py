@@ -16,6 +16,11 @@ def parse_analysis(raw, original_prompt=""):
         except (json.JSONDecodeError, AttributeError): data = None
     if not isinstance(data, dict):
         result = DEFAULT.copy(); result["optimized_prompt"] = original_prompt; return result, "Ollama lieferte keine valide strukturierte Analyse; sichere Standardwerte werden verwendet."
+    if not any(key in data for key in DEFAULT):
+        # Ein JSON-Objekt ohne einen einzigen bekannten Schluessel (z. B. {"thought": ...}
+        # eines Thinking-Modells) ist keine Analyse -- sonst kaemen stumm die
+        # Standardwerte ohne jeden Hinweis heraus.
+        result = DEFAULT.copy(); result["optimized_prompt"] = original_prompt; return result, "Ollama lieferte keine valide strukturierte Analyse; sichere Standardwerte werden verwendet."
     result = DEFAULT.copy(); result.update({k:v for k,v in data.items() if k in DEFAULT})
     for key in ("complexity_score","sensitivity_score","compliance_score"):
         try: result[key] = max(0, min(100, int(result[key])))
@@ -48,7 +53,12 @@ def analyze_with_ollama(prompt: str, service: OllamaService, keep_alive: str | N
     redacted = redact_sensitive(prompt)
     start = time.monotonic()
     try:
-        data = service.generate_raw(redacted, SYSTEM_PROMPT, json_mode=True, keep_alive=keep_alive, options=ANALYSIS_OPTIONS)
+        # think=False ist Pflicht fuer Thinking-Modelle wie gemma4: mit format=json und
+        # aktivem Denken liefert es nur {"thought": "..."} und beendet die Antwort --
+        # die App fiele dann bei jeder Analyse still auf die Standardwerte zurueck.
+        data = service.generate_raw(
+            redacted, SYSTEM_PROMPT, json_mode=True, keep_alive=keep_alive, options=ANALYSIS_OPTIONS, think=False
+        )
     except OllamaTimeoutError:
         logger.info("Analyse-Timeout nach %.1fs", time.monotonic() - start)
         raise
