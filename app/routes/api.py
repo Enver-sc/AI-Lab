@@ -93,7 +93,10 @@ def sustainability_for(tokens, output, model, duration, carbon_intensity):
     eco_result, eco_warning = compute_impacts(
         output, duration["max_seconds"], provider=None, catalog_model=model, app_config=current_app.config
     )
-    return {**formula, **(eco_result or {})}, eco_warning
+    sustainability = {**formula, **(eco_result or {})}
+    if eco_result is None:
+        sustainability["mode"] = "formula"
+    return sustainability, eco_warning
 
 def analysis_payload(prompt, mode="auto"):
     analysis_timeout = current_app.config.get("OLLAMA_ANALYSIS_TIMEOUT_SECONDS", 0)

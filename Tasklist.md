@@ -220,6 +220,34 @@ enthalten, außer der Originalprompt verlangt das ausdrücklich. Test:
 (prüft nur, dass die Anweisung im Prompt-String steht — ob das jeweilige Analyse-Modell
 sich daran hält, lässt sich nicht deterministisch testen). `pytest`: 100/100 grün.
 
+### Bug `[ERLEDIGT]`: `/api/analyze` zeigte "Nicht verfügbar" trotz vorhandenem Formel-Schätzwert
+
+**Symptom** (gefunden beim Bauen des Fußabdruck-Detailkapitels in `Architektur.md`
+§2.4): Liefert EcoLogits für `/api/analyze` keinen Wert (z. B. `ECOLOGITS_ENABLED=false`
+oder unbekanntes Modell ohne manuelle Parameter), zeigte die Kachel trotzdem einen
+echten Zahlenwert aus der alten linearen Formel (`sustainability_service.py`) — der
+Indikator daneben aber fälschlich "Nicht verfügbar" statt "Grobe Schätzung". Zahl und
+Indikator widersprachen sich sichtbar.
+
+**Ursache**: `sustainability_for()` (`app/routes/api.py`, genutzt von `/api/analyze`)
+setzte anders als die strukturell gleiche `estimate_footprint_for_provider()` (genutzt
+von `/api/estimate-footprint`) kein `mode: "formula"`, wenn `compute_impacts()` `None`
+liefert. `ecoIndicatorLabel()` im Dashboard (`dashboard.js`) fällt bei fehlendem `mode`
+auf den Default "Nicht verfügbar" zurück, unabhängig davon, ob ein Zahlenwert da ist.
+
+**Fix**: `sustainability_for()` bekam dieselbe `if eco_result is None: sustainability["mode"]
+= "formula"`-Ergänzung wie ihr Pendant. Test `test_analyze_falls_back_when_ecologits_disabled`
+(`tests/test_routes.py`) um die Regressionsprüfung `sustainability["mode"] == "formula"`
+erweitert. `pytest`: 126/126 grün.
+
+**Manueller Retest ausstehend** (noch nicht im Browser verifiziert, bitte vor der
+Präsentation einmal nachziehen):
+- Dashboard öffnen, `ECOLOGITS_ENABLED=false` in `.env` setzen (oder ein Modell wählen,
+  das EcoLogits nicht kennt und keine manuellen `eco_*`-Parameter hat).
+- Einen Prompt analysieren.
+- Erwartung: CO₂-/Energie-Kachel zeigt einen Zahlenwert **und** der Indikator daneben
+  zeigt "Grobe Schätzung" (nicht mehr "Nicht verfügbar").
+
 ### Architektur-/UML-Diagramm der EcoLogits-Implementierung für die Projektpräsentation
 
 **Ziel**: eine Diagramm-Darstellung (UML oder alternative Visualisierung) der
@@ -234,6 +262,26 @@ EcoLogits-Architektur verständlich zu vermitteln.
 
 **Priorität**: nicht dringend, aber terminlich relevant — rechtzeitig vor der
 Präsentation einplanen, nicht erst kurz davor.
+
+### Sequenzdiagramm (Code-Ebene) für den Analyse-Ablauf — für die Präsentation
+
+**Ziel**: ein Sequenzdiagramm, das den tatsächlichen Aufrufverlauf innerhalb
+von `analysis_payload()` (`app/routes/api.py`) zeigt — inkl. Nuancen wie
+`recommend()` (Empfehlung), das schon *vor* der Dauer-/Nachhaltigkeitsberechnung
+läuft, weil Letztere das empfohlene Modell als Eingabe braucht. Ergänzt die
+Stationen-Übersicht in `Architektur.md` (§2.1) um die Code-Ebene, ähnlich wie
+`docs/TECHNISCHE_DOKUMENTATION.md` §4 das schon fürs Gesamtsystem macht, nur
+genauer für diesen einen Ablauf.
+
+**Kontext**: Entstanden beim Cross-Check von Station 2 ("API-Routen") — die
+High-Level-Stationen-Sicht ist bewusst grob, für die Präsentation kann ein
+Detail-Sequenzdiagramm sinnvoll sein, um Nachfragen zur genauen Reihenfolge
+vorzubeugen. Separat vom bereits geplanten EcoLogits-/Fußabdruck-UML-Diagramm
+oben — beides zusammen ergibt die Detailebene unter der Stationen-Übersicht.
+
+**Priorität**: zurückgestellt, kommt nach der Stationen-Übersicht und dem
+Fußabdruck-Diagramm dran — nur fürs Backlog festgehalten, damit es nicht
+verloren geht.
 
 ### Reminder: `flask calibrate-ratio` gemeinsam testen, sobald genug echte Sends vorliegen
 
@@ -483,6 +531,35 @@ Mögliche Ansatzpunkte für die Diskussion:
   bei Bedarf individuell zu deaktivieren, ohne Code zu ändern.
 - Ehrlichere Fehlermeldung, die zwischen echtem Verbindungsfehler und
   Timeout unterscheidet.
+
+### Bonus für die Demo: RAG-Demonstrator für Compliance-Quellenverweis (Knowledge Base)
+
+**Ziel**: Ein bewusst eng abgegrenzter Demonstrator, der in der Präsentation
+zeigt, wie ein Compliance-Fund an einen echten Richtlinientext (DSGVO/KDG)
+zurückgeführt werden könnte — als Machbarkeits-Beweis für die im
+`Architektur.md` als fehlend markierte "Knowledge Base"-Komponente, **nicht**
+als Erweiterung der produktiven Stufe-1/Stufe-2-Prüfung.
+
+**Idee**: Kleine, feste Sammlung von 5–10 Richtlinien-Textschnipseln (z. B.
+DSGVO Art. 9, KDG § 11 zu Religionszugehörigkeit) im Code. Für einen
+vorbereiteten Demo-Prompt sucht eine leichte Ähnlichkeitssuche (z. B. über
+Ollamas `nomic-embed-text`-Embeddings, keine neue schwere Abhängigkeit) den
+passenden Schnipsel und zeigt ihn als zusätzliche Quellenangabe an der
+Compliance-Kachel an, z. B. "Quelle: DSGVO Art. 9 – besondere Kategorien
+personenbezogener Daten".
+
+**Abgrenzung**: Läuft hinter einem eigenen Schalter (z. B. `DEMO_MODE=true`,
+nach dem Muster bestehender Feature-Flags wie `ECOLOGITS_ENABLED`) und rührt
+die getestete Stufe-1/Stufe-2-Logik nicht an — kein Risiko für den
+produktiven Pfad kurz vor der Präsentation. In der Präsentation explizit als
+Machbarkeits-Demonstrator ankündigen, nicht als bereits produktives Feature.
+
+**Aufwand**: ~3–4 fokussierte Tage (Snippets aussuchen, Retrieval bauen,
+UI-Zeile ergänzen, mit dem echten Demo-Prompt durchtesten).
+
+**Priorität**: Bonus, hinter den Guardian-Themen und den anderen
+priorisierten Punkten — nur umsetzen, wenn nach den wichtigeren Punkten
+(Guardian-Timeout, Architektur.md, Demo-Storyline) noch Zeit bleibt.
 
 ### Finding (bewusst so entschieden, kein Fund): Routing Engine liefert nur Empfehlung, keinen automatischen Dispatch
 

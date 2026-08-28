@@ -117,3 +117,19 @@ EcoLogits = CO₂‑Schätzung pro Prompt
 Beide Tools sind sinnvoll, aber für unterschiedliche Zwecke.
 
 EcoLogits ist entscheidend für die Nutzer‑Sensibilisierung, CodeCarbon für die System‑Selbstbewertung.
+
+## Nachtrag (23.08.2026): CodeCarbon in der Praxis verworfen
+
+Die CodeCarbon-Empfehlung aus dieser Analyse (Abschnitt 2/5, "Perfekt für das
+lokale Analysemodell im Sustainable AI Gateway") wurde bei der tatsächlichen
+Umsetzung geprüft und **nicht umgesetzt**: Auf der Zielhardware (Windows, AMD,
+keine dedizierte GPU) liefert CodeCarbon selbst keine echte Messung, sondern
+nur einen TDP-basierten Schätzwert — genau den Ansatz, den das Projekt
+stattdessen direkt und ohne die zusätzliche Abhängigkeit über eine eigene,
+leichtgewichtige `psutil`-CPU-Auslastungsformel umsetzt
+(`app/services/local_energy_service.py`).
+
+Vollständige Begründung und Entscheidungsverlauf: [`CARBON_FOOTPRINT_REDESIGN.md`](CARBON_FOOTPRINT_REDESIGN.md),
+Nachtrag 24. Diese Analyse bleibt bewusst unverändert als historische
+Aufzeichnung des ursprünglichen Plans stehen — nur dieser Nachtrag verweist
+auf die später tatsächlich getroffene Entscheidung.
