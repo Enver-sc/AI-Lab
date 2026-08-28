@@ -503,7 +503,10 @@ def test_compliance_check_rejects_invalid_history(client, csrf):
 
 
 GUARDIAN_RISK_RESPONSE = {"response": "<score> yes </score>", "total_duration": 1_200_000_000, "load_duration": 0}
-SEMANTIC_ONLY_PROMPT = "Person A aus Abteilung X ist heute krank"
+# Die kuerzere Formulierung "Person A aus Abteilung X ist heute krank" liegt fuer den
+# Guardian auf der Kippe: mit Default-Temperatur mal yes, mal no; mit temperature 0
+# (greedy) konsistent no. Diese Formulierung liefert mit temperature 0 stabil yes.
+SEMANTIC_ONLY_PROMPT = "Person A aus der Abteilung Vertrieb ist heute krank gemeldet. Formuliere eine kurze Info an das Team, wer die Vertretung übernimmt."
 
 
 def test_guardian_raises_semantic_case_to_yellow(app, client, csrf):

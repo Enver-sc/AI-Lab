@@ -40,10 +40,13 @@ SCORE_PATTERN = re.compile(r"<score>\s*(yes|no)\s*</score>", re.I)
 # 4096 Token reichen fuer Kriterientext + Prompt + Denkprozess + Urteil bequem aus
 # (im aufgezeichneten Fixture-Lauf: 320 Prompt- + 418 Antwort-Token) und halten die
 # Instanz klein genug, um zwischen zwei Pruefungen zuverlaessig warm zu bleiben.
-# Bewusst keine weiteren Optionen (Temperatur o. Ä.): jede zusaetzliche, zwischen
-# Aufrufen variierende Option wuerde Ollama zwingen, das Modell mit den neuen
-# Optionen neu zu laden statt die bereits warme Instanz zu treffen.
-GUARDIAN_OPTIONS = {"num_ctx": 4096}
+# temperature 0: der Guardian ist ein Klassifikator, sein yes/no-Urteil soll fuer
+# denselben Prompt reproduzierbar ausfallen statt gewuerfelt (beobachtet: gleiche
+# Krankmeldung mal yes, mal no). Als konstante Sampling-Option erzwingt sie keinen
+# Instanz-Reload -- nur Optionen, die zwischen Aufrufen variieren oder die
+# Modellinstanz selbst betreffen (num_ctx), wuerden Ollama zum Neuladen zwingen.
+# Ansonsten bewusst keine weiteren Optionen.
+GUARDIAN_OPTIONS = {"num_ctx": 4096, "temperature": 0}
 
 
 def parse_guardian(raw: str) -> dict | None:

@@ -85,7 +85,7 @@ def test_check_text_uses_minimal_num_ctx_option():
     service = Mock()
     service.generate_raw.return_value = raw_response("<score> no </score>")
     check_text("Hallo", service)
-    assert service.generate_raw.call_args.kwargs["options"] == GUARDIAN_OPTIONS == {"num_ctx": 4096}
+    assert service.generate_raw.call_args.kwargs["options"] == GUARDIAN_OPTIONS == {"num_ctx": 4096, "temperature": 0}
 
 
 def test_check_text_logs_measured_duration_and_ollama_timings(caplog):
@@ -187,4 +187,4 @@ def test_apply_semantic_check_passes_guardian_timeout_and_keep_alive():
     service_cls.return_value.generate_raw.assert_called_once()
     call_kwargs = service_cls.return_value.generate_raw.call_args.kwargs
     assert call_kwargs["keep_alive"] == "30m"
-    assert call_kwargs["options"] == {"num_ctx": 4096}
+    assert call_kwargs["options"] == {"num_ctx": 4096, "temperature": 0}
