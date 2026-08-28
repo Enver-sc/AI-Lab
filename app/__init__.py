@@ -1,3 +1,4 @@
+import logging
 import secrets
 from flask import Flask, jsonify, request, session
 from dotenv import load_dotenv
@@ -6,6 +7,11 @@ from .extensions import db, ensure_schema_upgrades
 
 def create_app(config_object=Config):
     load_dotenv()
+    # Die Beweis-Logs der Ollama-Aufrufe (Analyse, Guardian) laufen auf INFO ueber
+    # app.services.*; ohne Root-Handler zeigt Python nur WARNING und hoeher, die
+    # Zeilen blieben im Flask-Terminal unsichtbar. basicConfig ist ein No-op, wenn
+    # bereits ein Handler konfiguriert ist (z. B. pytest, WSGI-Server).
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     app = Flask(__name__, instance_relative_config=True)
     app.config.from_object(config_object)
     app.config.from_prefixed_env()
