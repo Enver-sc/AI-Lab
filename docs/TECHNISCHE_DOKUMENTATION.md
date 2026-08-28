@@ -275,6 +275,8 @@ flowchart TD
 
 Bei zu langem Kontext wird zusätzlich geprüft, ob das Kontextfenster des Modells ausreicht. Die regelbasierte Entscheidung ergänzt die Ollama-Empfehlung und übernimmt sie nicht blind.
 
+**Bewusst kein automatischer Dispatch:** Dieser Abschnitt berechnet ausschließlich eine *Empfehlung*. `/api/send` verschickt immer an die vom Nutzer im UI manuell bestätigte Provider-/Modellwahl, nicht automatisch an das hier empfohlene Modell — eine bewusste Design-Entscheidung, keine unfertige Automatisierung, da jeder Versand eine explizite Bestätigung voraussetzt (siehe „Versandablauf" oben).
+
 ## 8. Versandablauf
 
 ```mermaid

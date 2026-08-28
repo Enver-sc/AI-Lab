@@ -75,6 +75,10 @@ def test_analyze_falls_back_when_ecologits_disabled(app,client,csrf):
     assert response.status_code == 200
     sustainability = response.get_json()["sustainability"]
     assert sustainability["co2_grams"] >= 0 and sustainability["energy_wh"] >= 0
+    # Regression: mode fehlte hier bisher komplett (anders als bei /api/estimate-footprint),
+    # wodurch das Dashboard trotz vorhandenem Formel-Wert faelschlich "Nicht verfuegbar" statt
+    # "Grobe Schaetzung" als Indikator zeigte.
+    assert sustainability["mode"] == "formula"
 
 def test_expected_output_tokens_scales_with_prompt_length(client, csrf):
     short_prompt = "Was ist Entropie?"
