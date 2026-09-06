@@ -260,18 +260,24 @@ Die Dauer ist eine Heuristik aus Grundlatenz, Input- und Output-Token, Modellkla
 
 ```mermaid
 flowchart TD
-    A[Analyseergebnis] --> S{Sensible Daten oder rote Ampel?}
-    S -->|Ja| L{Hohe Komplexität?}
+    A[Analyseergebnis] --> C1{Modus EU oder sensibel und Modus Cloud?}
+    C1 -->|Ja| EU[EU-gehostetes Modell]
+    C1 -->|Nein| C2{Modus Lokal oder sensibel oder rote Ampel?}
+    C2 -->|Ja| L{Hohe Komplexität?}
     L -->|Nein| LS[Lokales kleines Modell]
     L -->|Ja| LL[Lokales großes Modell]
-    S -->|Nein| M{Gewählter Modus}
-    M -->|Lokal| LS2[Lokales Modell]
-    M -->|EU| EU[EU-gehostetes Modell]
-    M -->|Cloud| C{Hohe Komplexität?}
+    C2 -->|Nein| C3{Modus Cloud?}
+    C3 -->|Ja| C{Hohe Komplexität?}
     C -->|Nein| CS[Cloud Small]
     C -->|Ja| CL[Cloud Large]
-    M -->|Automatisch| LA[Passendes lokales Modell]
+    C3 -->|Nein, Automatisch| CA[Von Ollama empfohlene oder komplexitätsbasierte Cloud-Klasse]
 ```
+
+Die Bedingungen werden strikt der Reihe nach geprüft: Ein sensibler Prompt
+bei explizit gewähltem Modus „Cloud" weicht auf EU aus, nicht auf lokal —
+nur wenn kein EU-Fall vorliegt, greift die Sensibel-/Rot-Regel zugunsten
+eines lokalen Modells. Details siehe [Architektur.md](../Architektur.md)
+§2.6.
 
 Bei zu langem Kontext wird zusätzlich geprüft, ob das Kontextfenster des Modells ausreicht. Die regelbasierte Entscheidung ergänzt die Ollama-Empfehlung und übernimmt sie nicht blind.
 

@@ -621,3 +621,24 @@ Ollama noch rechnet.
 die Demo reicht es, kurz zu warten, bis „Analyse abgeschlossen." erscheint,
 bevor auf die Werte gezeigt wird. Möglicher späterer Fix: Kacheln beim
 Start von `analyze()` dimmen oder leeren, bis die neue Antwort da ist.
+
+### v2-Idee: EcoLogits-Version automatisiert aktuell halten (Dependabot)
+
+**Ziel**: `requirements.txt` pinnt `ecologits==0.11.1` fest. Ein neues
+Modell, das erst in einer späteren EcoLogits-Version als bestätigter
+DB-Eintrag hinzukommt, fällt bei uns so lange auf „Näherung" statt
+„Bestätigt" zurück, bis jemand die Version manuell hochzieht — derselbe
+Mechanismus wie in Architektur.md §2.4.1–2.4.4, nur zeitlich verschoben
+durch eine veraltete Abhängigkeit statt durch ein unbekanntes Modell.
+
+**Idee**: GitHub Dependabot (`.github/dependabot.yml`, `package-ecosystem:
+pip`) einrichten — öffnet automatisch einen PR, sobald eine neue
+EcoLogits-Version erscheint, inkl. Testlauf auf dem PR. Kein neuer Dienst,
+reine Repo-Konfiguration, kein Server nötig.
+
+**Abgrenzung**: Fügt selbst keine neue Python-Abhängigkeit hinzu, ändert
+aber den PR-Workflow (automatisch generierte Update-PRs) — laut AGENTS.md
+("keine neuen Abhängigkeiten/Linter/Formatter ohne Team-Entscheidung")
+trotzdem erst im Team abstimmen, bevor die Datei angelegt wird.
+
+**Status**: Noch nicht umgesetzt, v2-Idee für die Präsentation.
