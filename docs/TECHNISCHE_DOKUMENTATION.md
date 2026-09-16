@@ -213,6 +213,21 @@ Danach sollte mindestens ein positiver und ein negativer Test in `tests/test_ser
 geschätzte Token = max(1, round(Zeichenanzahl / 4))
 ```
 
+Die erwarteten Output-Token (Basis für Kosten-, Energie- und Dauerschätzung) ergeben
+sich proportional zur Eingabelänge:
+
+```text
+erwartete Output-Token = max(1, round(Input-Token × EXPECTED_OUTPUT_RATIO))
+```
+
+`EXPECTED_OUTPUT_RATIO` ist ein konfigurierbarer Faktor (`config.py`, Default `6`).
+Der CLI-Befehl `flask calibrate-ratio` schlägt einen kalibrierten Wert aus echten
+`UsageLog`-Daten vor: Median aus `estimated_output_tokens / input_tokens` über alle
+erfolgreichen Sends (`request_status == "success"`), erst ab einer Mindeststichprobe
+von 20 Sends und nur bei aktivem `ENABLE_PROMPT_LOGGING`
+(`app/services/ratio_calibration_service.py`). Der Befehl ändert `.env` nicht
+automatisch — die Übernahme des Vorschlags bleibt manuell.
+
 ### Kosten
 
 ```text
